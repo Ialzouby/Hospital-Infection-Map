@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapping Healthcare Acquired Infections</title>
+    <!-- Import D3.js library for data visualization -->
+    <script src="https://d3js.org/d3.v7.min.js" charset="utf-8"></script>
+    <!-- Import Simple Statistics library for calculations -->
+    <script src="https://cdn.jsdelivr.net/npm/simple-statistics@7.7.2"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fa;
+        }
+    
+        h1 {
+            text-align: center;
+            color: #343a40;
+            margin: 20px 0;
+        }
+    
+        select, button {
+            display: block;
+            margin: 10px auto;
+            padding: 8px 16px;
+            font-size: 16px;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+            background-color: #ffffff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+    
+        select:hover, button:hover {
+            background-color: #e9ecef;
+            cursor: pointer;
+        }
+    
+        #map {
+        width: 80%;
+        height: 600px;
+        margin: 0px auto; /* Centers the map horizontally */
+        border: 2px solid #ced4da;
+        border-radius: 5px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        background-color: #ffffff;
+        display: block; /* Ensures the map is treated as a block element */
+        }
+    
+        .tooltip {
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 10px;
+            pointer-events: none;
+            font-size: 14px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+    
+        button#resetButton {
+            width: 200px;
+        }
+    
+        #tooltip {
+            font-family: Arial, sans-serif;
+        }
+    </style>
+    
+</head>
+<body>
+    <h1>Hospital-Acquired Infection Rates by State</h1>
+    <div style="display: flex; justify-content: center; align-items: center; gap: 10px; margin: 20px 0;">
+        <select id="filter">
+            <option value="all">All Infection Types</option>
+        </select>
+        <button id="resetButton">Reset View</button>
+    </div>
+    
+    <div id="map" ></div>
+    <div class="tooltip" id="tooltip"></div>
+    <script src="new.js"></script>  
+</body>
+</html>
