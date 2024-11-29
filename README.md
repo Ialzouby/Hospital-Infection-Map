@@ -32,7 +32,7 @@ The data used in this project is expected to be in CSV format with the following
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/yourusername/hospital-infection-visualization.git
+   git clone https://github.com/Ialzouby/Hospital-Infection-Map.git
    cd hospital-infection-visualization
    ```
 
