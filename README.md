@@ -1,6 +1,10 @@
 # 🏥 Hospital Infection Visualization
 
-![Hospital Infection Visualization](path/to/your/image.png) <!-- Replace with the path to your graphic -->
+<div style="display: flex; justify-content: space-between;">
+    <img src="path/to/your/image1.png" alt="Image 1" style="width: 32%;"/>
+    <img src="path/to/your/image2.png" alt="Image 2" style="width: 32%;"/>
+    <img src="path/to/your/image3.png" alt="Image 3" style="width: 32%;"/>
+</div>
 
 Welcome to the Hospital Infection Visualization project! This interactive map allows you to explore infection data across hospitals in the United States, providing insights into healthcare trends and infection rates.
 
