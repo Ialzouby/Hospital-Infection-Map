@@ -1,4 +1,4 @@
-# 🏥 Hospital Infection Visualization
+# 🏥 UNC-Chapel Hill Hospital Infection Visualization
 
 <div style="display: flex; justify-content: space-between;">
     <img src="https://github.com/Ialzouby/Hospital-Infection-Map/blob/main/assets/1.png" alt="Image 1" style="width: 32%;"/>
@@ -74,7 +74,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## 📧 Contact
 
-For questions or feedback, please contact [yourname@example.com](mailto:yourname@example.com).
+For questions or feedback, please contact [ialzouby@gmail.com](mailto:yourname@example.com).
 
 ---
 
