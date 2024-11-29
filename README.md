@@ -1,7 +1,7 @@
 # 🏥 Hospital Infection Visualization
 
 <div style="display: flex; justify-content: space-between;">
-    <img src="path/to/your/image1.png" alt="Image 1" style="width: 32%;"/>
+    <img src="https://github.com/Ialzouby/Hospital-Infection-Map/blob/main/assets/1.png" alt="Image 1" style="width: 32%;"/>
     <img src="path/to/your/image2.png" alt="Image 2" style="width: 32%;"/>
     <img src="path/to/your/image3.png" alt="Image 3" style="width: 32%;"/>
 </div>
