@@ -159,33 +159,11 @@ Promise.all([
     function showHospitals(stateName) {
         const selectedType = d3.select("#filter").node().value;
     
-        // Normalize infection names
-        const normalizedData = infectionData.map(d => ({
-            ...d,
-            measure_name: normalizeInfectionName(d.measure_name)
-        }));
+        // Filter data for the selected state
+        const stateData = infectionData.filter(d => d.state === stateName);
     
-        // Filter data by state
-        const filteredData = selectedType === "all"
-            ? normalizedData.filter(d => d.state === stateName) // Include all infections
-            : normalizedData.filter(d => d.state === stateName && d.measure_name === selectedType);
-    
-        // If "all" is selected, aggregate infection counts by hospital
-        const aggregatedData = selectedType === "all"
-            ? Array.from(
-                d3.rollup(
-                    filteredData,
-                    group => d3.sum(group, d => +d.score || 0), // Sum infection scores
-                    d => d.hospital_id // Group by hospital ID
-                ),
-                ([hospital_id, totalScore]) => ({
-                    hospital_id,
-                    totalScore,
-                    lon: filteredData.find(d => d.hospital_id === hospital_id)?.lon,
-                    lat: filteredData.find(d => d.hospital_id === hospital_id)?.lat
-                })
-            )
-            : filteredData; // Use filtered data as-is for specific infection type
+        // Aggregate infection data by hospital
+        const aggregatedData = aggregateInfectionData(stateData, selectedType);
     
         // Remove any existing hospital markers
         hospitalGroup.selectAll("circle").remove();
@@ -210,7 +188,7 @@ Promise.all([
                 tooltip.style("display", "block")
                     .html(`<strong>${d.hospital_id}</strong><br>
                            ${selectedType === "all" ? `All Infections: ${d.totalScore}` :
-                             `Infection Type: ${d.measure_name}<br>Count: ${d.score || "No data"}`}`);
+                             `Infection Type: ${selectedType}<br>Count: ${d.totalScore || "No data"}`}`);
             })
             .on("mousemove", (event) => {
                 tooltip.style("left", `${event.pageX + 10}px`)
@@ -219,10 +197,44 @@ Promise.all([
             .on("mouseout", () => {
                 tooltip.style("display", "none");
             });
-            
     }
     
     
+    // Aggregation logic for infection counts by hospital and infection type
+        function aggregateInfectionData(infectionData, selectedType) {
+            // Normalize infection names
+            const normalizedData = infectionData.map(d => ({
+                ...d,
+                measure_name: normalizeInfectionName(d.measure_name),
+                score: +d.score || 0 // Ensure the score is a number
+            }));
+
+            // Filter data by infection type
+            const filteredData = selectedType === "all"
+                ? normalizedData // Include all infections
+                : normalizedData.filter(d => d.measure_name === selectedType);
+
+            // Group by hospital_id and measure_name, summing scores
+            const aggregatedData = Array.from(
+                d3.rollup(
+                    filteredData,
+                    group => d3.sum(group, d => d.score), // Sum the scores
+                    d => d.hospital_id,
+                    d => d.measure_name
+                ),
+                ([hospital_id, infectionMap]) => ({
+                    hospital_id,
+                    totalScore: selectedType === "all" 
+                        ? Array.from(infectionMap.values()).reduce((sum, score) => sum + score, 0)
+                        : infectionMap.get(selectedType) || 0,
+                    lon: filteredData.find(d => d.hospital_id === hospital_id)?.lon,
+                    lat: filteredData.find(d => d.hospital_id === hospital_id)?.lat
+                })
+            );
+
+            return aggregatedData;
+        }
+
     
         // Calculate "all" infection count by aggregating across all infection types
         function calculateAllInfections(stateName) {
