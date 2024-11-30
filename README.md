@@ -1,9 +1,9 @@
-# 🏥 Hospital Infection Visualization
+# 🏥 UNC-Chapel Hill Hospital Infection Visualization
 
 <div style="display: flex; justify-content: space-between;">
-    <img src="path/to/your/image1.png" alt="Image 1" style="width: 32%;"/>
-    <img src="path/to/your/image2.png" alt="Image 2" style="width: 32%;"/>
-    <img src="path/to/your/image3.png" alt="Image 3" style="width: 32%;"/>
+    <img src="https://github.com/Ialzouby/Hospital-Infection-Map/blob/main/assets/1.png" alt="Image 1" style="width: 32%;"/>
+    <img src="https://github.com/Ialzouby/Hospital-Infection-Map/blob/main/assets/2.png" alt="Image 2" style="width: 32%;"/>
+    <img src="https://github.com/Ialzouby/Hospital-Infection-Map/blob/main/assets/3.png" alt="Image 3" style="width: 32%;"/>
 </div>
 
 Welcome to the Hospital Infection Visualization project! This interactive map allows you to explore infection data across hospitals in the United States, providing insights into healthcare trends and infection rates.
@@ -32,7 +32,7 @@ The data used in this project is expected to be in CSV format with the following
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/yourusername/hospital-infection-visualization.git
+   git clone https://github.com/Ialzouby/Hospital-Infection-Map.git
    cd hospital-infection-visualization
    ```
 
@@ -74,7 +74,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## 📧 Contact
 
-For questions or feedback, please contact [yourname@example.com](mailto:yourname@example.com).
+For questions or feedback, please contact [ialzouby@gmail.com](mailto:yourname@example.com).
 
 ---
 
