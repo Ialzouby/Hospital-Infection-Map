@@ -1,5 +1,5 @@
 // Set dimensions and margins for the SVG
-const width = 960;
+const width = 1400;
 const height = 600;
 
 let currentSelectedState = null; // Holds the name of the currently selected state
@@ -9,7 +9,33 @@ let currentSelectedState = null; // Holds the name of the currently selected sta
 const svg = d3.select("#map")
     .append("svg")
     .attr("width", width)
-    .attr("height", height);
+    .attr("height", height)
+    .attr("viewBox", `0 0 ${width} ${height}`)
+    .attr("preserveAspectRatio", "xMidYMid meet");
+
+// Add ocean background
+svg.append("rect")
+    .attr("width", width)
+    .attr("height", height)
+    .attr("fill", "#cce7ff");
+
+// Optional: Add gradient ocean
+svg.append("defs")
+    .append("linearGradient")
+    .attr("id", "ocean-gradient")
+    .attr("x1", "0%").attr("y1", "0%")
+    .attr("x2", "0%").attr("y2", "100%")
+    .selectAll("stop")
+    .data([
+        { offset: "0%", color: "#cce7ff" },
+        { offset: "100%", color: "#a2d3f7" }
+    ])
+    .enter()
+    .append("stop")
+    .attr("offset", d => d.offset)
+    .attr("stop-color", d => d.color);
+
+svg.select("rect").attr("fill", "url(#ocean-gradient)");
 
 const mapGroup = svg.append("g"); // Group for zoom/pan
 const hospitalGroup = svg.append("g"); // Group for hospitals
@@ -73,8 +99,22 @@ Promise.all([
     // Define projection and path generator
     const projection = d3.geoAlbersUsa()
         .translate([width / 2, height / 2])
-        .scale(1000);
+        .scale(1100);
     const path = d3.geoPath().projection(projection);
+
+    svg.append("g")
+    .selectAll("path")
+    .data(geoData.features)
+    .enter()
+    .append("path")
+    .attr("d", path)
+    .attr("fill", d => {
+        const state = d.properties.NAME;
+        const infectionCount = infectionByState[state];
+        return infectionCount ? colorScale(infectionCount) : "#eee";
+    })
+    .attr("stroke", "#333")
+    .attr("stroke-width", 0.5);
 
     // Bind data and create one path per GeoJSON feature
     const states = mapGroup.selectAll("path")
@@ -276,6 +316,277 @@ Promise.all([
             }
         });
         
+
+// Populate dropdowns after loading data
+function populateDropdowns(infectionData) {
+    const states = Array.from(new Set(infectionData.map(d => d.state))).sort();
+    const hospitals = Array.from(new Set(infectionData.map(d => d.hospital_id))).sort();
+    const infections = Array.from(new Set(infectionData.map(d => normalizeInfectionName(d.measure_name))));
+
+    // Populate the state dropdown and attach a callback to update hospitals
+    populateDropdown("stateSelect", "stateInput", states, (selectedState) => {
+        const filteredHospitals = selectedState === "all"
+            ? hospitals
+            : Array.from(new Set(infectionData
+                  .filter(d => d.state === selectedState)
+                  .map(d => d.hospital_id)
+              )).sort();
+
+        updateHospitalDropdown(filteredHospitals);
+    });
+
+    // Populate the hospital and infection type dropdowns
+    populateDropdown("hospitalSelect", "hospitalInput", hospitals);
+    populateDropdown("infectionSelect", "infectionInput", infections);
+}
+
+
+// Populate a single dropdown with search functionality
+function populateDropdown(selectId, inputId, options, onOptionChange = () => {}) {
+    const select = document.getElementById(selectId);
+    const input = document.getElementById(inputId);
+
+    // Add all options to the dropdown
+    options.forEach(option => {
+        const opt = document.createElement("option");
+        opt.value = option;
+        opt.text = option;
+        select.appendChild(opt);
+    });
+
+    // Add event listener to filter options based on input
+    input.addEventListener("input", () => {
+        const filter = input.value.toLowerCase();
+        select.innerHTML = ""; // Clear existing options
+
+        // Add filtered options to the dropdown
+        options
+            .filter(option => option.toLowerCase().includes(filter))
+            .forEach(option => {
+                const opt = document.createElement("option");
+                opt.value = option;
+                opt.text = option;
+                select.appendChild(opt);
+            });
+
+        // Auto-select the first matching option
+        if (select.options.length > 0) {
+            select.selectedIndex = 0;
+        }
+
+        // Trigger the callback with the new selection (if valid)
+        const selectedValue = select.options[0]?.value || "";
+        onOptionChange(selectedValue);
+    });
+
+    // Sync input value with selected dropdown option
+    select.addEventListener("change", () => {
+        input.value = select.value;
+        onOptionChange(select.value);
+    });
+}
+
+
+// Load dropdown options and add event listeners
+Promise.all([
+    d3.json("GZ2.geojson"),
+    d3.csv("healthcare_data.csv")
+]).then(([geoData, infectionData]) => {
+    populateDropdowns(infectionData);
+
+    // Add other event listeners as needed (e.g., for state changes)
+    d3.select("#stateSelect").on("change", function () {
+        const selectedState = this.value;
+
+        // Filter hospitals based on selected state
+        const filteredHospitals = selectedState === "all"
+            ? Array.from(new Set(infectionData.map(d => d.hospital_id))).sort()
+            : Array.from(new Set(infectionData.filter(d => d.state === selectedState).map(d => d.hospital_id))).sort();
+
+        populateDropdown("hospitalSelect", "hospitalInput", filteredHospitals);
+    });
+}).catch(error => {
+    console.error("Error loading data:", error);
+});
+
+
+function updateHospitalDropdown(hospitals) {
+    const hospitalSelect = document.getElementById("hospitalSelect");
+    const hospitalInput = document.getElementById("hospitalInput");
+
+    // Clear existing dropdown options
+    hospitalSelect.innerHTML = "";
+    hospitalInput.value = ""; // Clear the search input
+
+    // Add "All Hospitals" as a default option
+    const allOption = document.createElement("option");
+    allOption.value = "all";
+    allOption.text = "All Hospitals";
+    hospitalSelect.appendChild(allOption);
+
+    // Populate the dropdown with updated hospitals
+    hospitals.forEach(hospital => {
+        const option = document.createElement("option");
+        option.value = hospital;
+        option.text = hospital;
+        hospitalSelect.appendChild(option);
+    });
+
+    // Sync search functionality with the updated dropdown
+    hospitalInput.addEventListener("input", () => {
+        const filter = hospitalInput.value.toLowerCase();
+        hospitalSelect.innerHTML = ""; // Clear dropdown
+        hospitals
+            .filter(hospital => hospital.toLowerCase().includes(filter))
+            .forEach(hospital => {
+                const option = document.createElement("option");
+                option.value = hospital;
+                option.text = hospital;
+                hospitalSelect.appendChild(option);
+            });
+
+        // Auto-select the first matching option
+        if (hospitalSelect.options.length > 0) {
+            hospitalSelect.selectedIndex = 0;
+        }
+    });
+
+    hospitalSelect.addEventListener("change", () => {
+        hospitalInput.value = hospitalSelect.value;
+    });
+}
+
+
+
+// Manage visibility of dropdowns
+function setupDropdownVisibility() {
+    const inputs = [
+        { inputId: "stateInput", dropdownId: "stateSelect" },
+        { inputId: "hospitalInput", dropdownId: "hospitalSelect" },
+        { inputId: "infectionInput", dropdownId: "infectionSelect" }
+    ];
+
+    inputs.forEach(({ inputId, dropdownId }) => {
+        const input = document.getElementById(inputId);
+        const dropdown = document.getElementById(dropdownId);
+
+        // Hide all dropdowns initially
+        dropdown.style.display = "none";
+
+        // Add focus listener to the input
+        input.addEventListener("focus", () => {
+            // Hide all other dropdowns
+            inputs.forEach(({ dropdownId: otherDropdownId }) => {
+                if (dropdownId !== otherDropdownId) {
+                    document.getElementById(otherDropdownId).style.display = "none";
+                }
+            });
+
+            // Show the current dropdown
+            dropdown.style.display = "block";
+        });
+
+        // Add blur listener to hide the dropdown when clicking outside
+        input.addEventListener("blur", () => {
+            setTimeout(() => dropdown.style.display = "none", 200); // Delay to allow option selection
+        });
+
+        // Keep input in sync with the dropdown
+        dropdown.addEventListener("change", () => {
+            input.value = dropdown.value;
+            dropdown.style.display = "none"; // Hide the dropdown after selection
+        });
+    });
+}
+
+// Call this function after populating dropdowns
+setupDropdownVisibility();
+
+        
+
+// Event listeners for modal
+const exportButton = document.getElementById("exportButton");
+const exportModal = document.getElementById("exportModal");
+const closeModalButton = document.getElementById("closeModalButton");
+
+exportButton.addEventListener("click", () => {
+    exportModal.style.display = "block";
+});
+
+closeModalButton.addEventListener("click", () => {
+    exportModal.style.display = "none";
+});
+
+// Export CSV logic
+// Export CSV logic for all columns
+document.getElementById("exportCsvButton").addEventListener("click", () => {
+    const selectedState = document.getElementById("stateSelect").value;
+    const selectedHospital = document.getElementById("hospitalSelect").value;
+    const selectedInfection = document.getElementById("infectionSelect").value;
+
+    // Filter data based on dropdown selections
+    const filteredData = infectionData.filter(d =>
+        (selectedState === "all" || d.state === selectedState) &&
+        (selectedHospital === "all" || d.hospital_id === selectedHospital) &&
+        (selectedInfection === "all" || normalizeInfectionName(d.measure_name) === selectedInfection)
+    );
+
+    // Define all columns (A-P)
+    const columns = [
+        "l", "facility_id", "hospital_id", "address", "city", "state",
+        "zip_code", "county_name", "measure_name", "compared_to_national",
+        "score", "start_date", "end_date", "original_Address", "lat", "lon"
+    ];
+
+    // Create CSV content
+    const csvContent = [
+        columns.join(","), // Add header row
+        ...filteredData.map(d => columns.map(col => d[col] || "").join(",")) // Map data rows
+    ].join("\n");
+
+    // Trigger file download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "HA-Infections.csv";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Close the modal after export
+    document.getElementById("exportModal").style.display = "none";
+});
+
+
+
+// Populate dropdowns after loading data
+// Populate dropdowns after loading data
+Promise.all([
+    d3.json("GZ2.geojson"), 
+    d3.csv("healthcare_data.csv")  
+]).then(([geoData, infectionData]) => {
+    // Populate state, hospital, and infection type dropdowns
+    populateDropdowns(infectionData);
+
+    // Add event listener for state dropdown changes
+    d3.select("#stateSelect").on("change", function () {
+        const selectedState = this.value;
+
+        // Filter hospitals based on selected state
+        const filteredHospitals = selectedState === "all"
+            ? Array.from(new Set(infectionData.map(d => d.hospital_id))).sort()
+            : Array.from(new Set(infectionData.filter(d => d.state === selectedState).map(d => d.hospital_id))).sort();
+
+        updateHospitalDropdown(filteredHospitals);
+    });
+
+}).catch(error => {
+    console.error("Error loading data:", error);
+});
+
+
+
         
         
     

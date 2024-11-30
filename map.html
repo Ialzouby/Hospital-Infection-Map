@@ -37,6 +37,31 @@
             background-color: #e9ecef;
             cursor: pointer;
         }
+
+        .dropdown-container {
+    position: relative;
+    margin-bottom: 10px;
+}
+
+.dropdown-input {
+    width: 100%;
+    padding: 8px;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    margin-bottom: 5px;
+}
+
+.dropdown-select {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    padding: 5px;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
     
         #map {
         width: 80%;
@@ -68,6 +93,12 @@
         #tooltip {
             font-family: Arial, sans-serif;
         }
+
+        #exportModal select {
+    display: block; /* Ensure dropdowns are not hidden */
+    width: 100%;    /* Make them responsive */
+}
+
     </style>
     
 </head>
@@ -77,6 +108,44 @@
         <select id="filter">
             <option value="all">All Infection Types</option>
         </select>
+        <!-- Add an Export button -->
+<div style="display: flex; justify-content: center; margin: 20px;">
+    <button id="exportButton">Export Data</button>
+</div>
+
+<!-- Modal for export filters -->
+<div id="exportModal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 300px; background: white; border: 1px solid #ccc; border-radius: 10px; padding: 20px; box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);">
+    <h3 style="text-align: center;">Export Filters</h3>
+
+<!-- State Dropdown -->
+<label for="stateSelect">State:</label>
+<div class="dropdown-container">
+    <input type="text" id="stateInput" placeholder="Type to search..." class="dropdown-input" />
+    <select id="stateSelect" size="5" class="dropdown-select"></select>
+</div>
+
+<!-- Hospital Dropdown -->
+<label for="hospitalSelect">Hospital:</label>
+<div class="dropdown-container">
+    <input type="text" id="hospitalInput" placeholder="Type to search..." class="dropdown-input" />
+    <select id="hospitalSelect" size="5" class="dropdown-select"></select>
+</div>
+
+<!-- Infection Dropdown -->
+<label for="infectionSelect">Infection Type:</label>
+<div class="dropdown-container">
+    <input type="text" id="infectionInput" placeholder="Type to search..." class="dropdown-input" />
+    <select id="infectionSelect" size="5" class="dropdown-select"></select>
+</div>
+
+
+    <div style="text-align: center;">
+        <button id="exportCsvButton" style="margin-right: 10px;">Export</button>
+        <button id="closeModalButton">Cancel</button>
+    </div>
+</div>
+
+
         <button id="resetButton">Reset View</button>
     </div>
     
