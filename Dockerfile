@@ -1,17 +1,17 @@
-# Use a lightweight Node.js base image
+# Step 1: Use a lightweight Node.js image as the base
 FROM node:18-slim
 
-# Set the working directory inside the container
+# Step 2: Set the working directory inside the container
 WORKDIR /app
 
-# Copy all your static files to the container
+# Step 3: Copy all files from your project to the container
 COPY . .
 
-# Install the `serve` package globally
-RUN npm install -g serve
+# Step 4: Install `http-server` globally
+RUN npm install -g http-server
 
-# Expose the port Railway uses
+# Step 5: Expose the port your app will use
 EXPOSE 3000
 
-# Start the server with the `serve` command
-CMD ["serve", "-s", ".", "-l", "tcp://0.0.0.0:$PORT"]
+# Step 6: Set the default command to start `http-server`
+CMD ["sh", "-c", "http-server -p ${PORT:-3000}"]
