@@ -102,19 +102,7 @@ Promise.all([
         .scale(1100);
     const path = d3.geoPath().projection(projection);
 
-    svg.append("g")
-    .selectAll("path")
-    .data(geoData.features)
-    .enter()
-    .append("path")
-    .attr("d", path)
-    .attr("fill", d => {
-        const state = d.properties.NAME;
-        const infectionCount = infectionByState[state];
-        return infectionCount ? colorScale(infectionCount) : "#eee";
-    })
-    .attr("stroke", "#333")
-    .attr("stroke-width", 0.5);
+    
 
     // Bind data and create one path per GeoJSON feature
     const states = mapGroup.selectAll("path")
