@@ -20,4 +20,4 @@ RUN npm install -g serve
 EXPOSE 3000
 
 # Start the server
-CMD ["serve", ".", "-l", "${PORT:-3000}"]
+CMD ["sh", "-c", "serve -s . -l ${PORT:-3000}"]
