@@ -224,6 +224,9 @@ Promise.all([
             })
             .on("mouseout", () => {
                 tooltip.style("display", "none");
+            })
+            .on("click", (event, d) => {
+                openModal(d.hospital_id); // Add the event listener here
             });
     }
     
@@ -375,6 +378,96 @@ function populateDropdown(selectId, inputId, options, onOptionChange = () => {})
 }
 
 
+function openModal(hospitalId) {
+    const modal = document.getElementById("lineGraphModal");
+    const iframe = document.getElementById("lineGraphFrame");
+
+    // Set the iframe source to the linegraph HTML with a query parameter for the hospital ID
+    iframe.src = `multi-series_linegraph-2.html?hospital=${encodeURIComponent(hospitalId)}`;
+    modal.style.display = "block";
+
+    const closeButton = document.getElementsByClassName("close")[0];
+    closeButton.onclick = () => { modal.style.display = "none"; };
+
+    window.onclick = event => {
+        if (event.target === modal) {
+            modal.style.display = "none";
+        }
+    };
+}
+
+function loadLineGraph(hospitalId) {
+    const container = document.getElementById("lineGraphContainer");
+    container.innerHTML = ""; // Clear previous content
+
+    // Fetch and process the CSV
+    d3.csv("healthcare_data.csv").then(data => {
+        const parseDate = d3.timeParse("%m/%d/%Y");
+        const filteredData = data.filter(d => d.hospital_id === hospitalId).map(d => ({
+            date: parseDate(d["start_date"]),
+            score: +d["score"]
+        }));
+
+        renderLineGraph(filteredData, container);
+    }).catch(error => console.error("Error loading data:", error));
+}
+
+function renderLineGraph(data, container) {
+    const width = 600;
+    const height = 400;
+    const margin = { top: 20, right: 30, bottom: 50, left: 50 };
+
+    const svg = d3.select(container).append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+    const x = d3.scaleTime()
+        .domain(d3.extent(data, d => d.date))
+        .range([margin.left, width - margin.right]);
+
+    const y = d3.scaleLinear()
+        .domain([0, d3.max(data, d => d.score)])
+        .range([height - margin.bottom, margin.top]);
+
+    const line = d3.line()
+        .x(d => x(d.date))
+        .y(d => y(d.score));
+
+    svg.append("path")
+        .datum(data)
+        .attr("fill", "none")
+        .attr("stroke", "steelblue")
+        .attr("stroke-width", 2)
+        .attr("d", line);
+
+    svg.append("g")
+        .attr("transform", `translate(0,${height - margin.bottom})`)
+        .call(d3.axisBottom(x).ticks(5).tickFormat(d3.timeFormat("%b %Y")))
+        .selectAll("text")
+        .attr("transform", "rotate(-45)")
+        .style("text-anchor", "end");
+
+    svg.append("g")
+        .attr("transform", `translate(${margin.left},0)`)
+        .call(d3.axisLeft(y));
+
+    svg.append("text")
+        .attr("x", width / 2)
+        .attr("y", height - 10)
+        .attr("text-anchor", "middle")
+        .text("Date");
+
+    svg.append("text")
+        .attr("x", -height / 2)
+        .attr("y", 15)
+        .attr("text-anchor", "middle")
+        .attr("transform", "rotate(-90)")
+        .text("Score");
+}
+
+
+
+
 // Load dropdown options and add event listeners
 Promise.all([
     d3.json("GZ2.geojson"),
@@ -486,7 +579,6 @@ function setupDropdownVisibility() {
         });
     });
 }
-
 // Call this function after populating dropdowns
 setupDropdownVisibility();
 
@@ -674,3 +766,5 @@ d3.select("#map")
   .attr("height", 20)
   .attr("x", d => projection([d.longitude, d.latitude])[0] - 10) // Adjust positioning
   .attr("y", d => projection([d.longitude, d.latitude])[1] - 10);
+
+
