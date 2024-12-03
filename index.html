@@ -73,6 +73,16 @@
         background-color: #ffffff;
         display: block; /* Ensures the map is treated as a block element */
         }
+
+        #yearSelect {
+    display: block; /* Ensures the dropdown is visible */
+    width: 10%;    /* Adjust width to match the container */
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    margin-top: 10px;
+}
+
     
         .tooltip {
             position: absolute;
@@ -124,6 +134,25 @@
             flex-direction: column;
         }
 
+        /* Add spacing and alignment for the dropdowns */
+        .flex-container {
+    display: flex; /* Use flexbox for horizontal layout */
+    justify-content: flex-end; /* Align all elements to the right */
+    align-items: center; /* Align items vertically in the center */
+    gap: 10px; /* Add space between the dropdowns and buttons */
+    margin: 20px; /* Add some margin */
+    margin-bottom: 40px;
+    margin-top: 40px;
+}
+
+
+/* Ensure dropdowns have consistent size */
+.flex-container select {
+    min-width: 200px; /* Adjust width as needed */
+    padding: 8px; /* Add padding for consistent appearance */
+}
+
+
 
 
         .modal {
@@ -171,19 +200,32 @@
     border: none;
 }
 
+#county-stats {
+    width: 200px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
     </style>
     
 </head>
 <body>
     <h1>Hospital-Acquired Infection Rates by State</h1>
-    <div style="display: flex; justify-content: center; align-items: center; gap: 10px; margin: 20px 0;">
+    <div class="flex-container">
         <select id="filter">
             <option value="all">All Infection Types</option>
         </select>
-        <!-- Add an Export button -->
-<div style="display: flex; justify-content: center; margin: 20px;">
-    <button id="exportButton">Export Data</button>
-</div>
+    
+        <select id="yearSelect">
+            <option value="all">All Years</option>
+        </select>
+    
+        <button id="exportButton">Export Data</button>
+        <button id="resetButton">Reset View</button>
+    </div>
+    
+        
+
+        
 
 <!-- Modal for export filters -->
 <div id="exportModal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 300px; background: white; border: 1px solid #ccc; border-radius: 10px; padding: 20px; box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);">
@@ -218,8 +260,6 @@
 </div>
 
 
-        <button id="resetButton">Reset View</button>
-    </div>
     
     <div id="map" ></div>
     <div class="tooltip" id="tooltip"></div>
@@ -229,6 +269,12 @@
             <span class="close">&times;</span>
             <iframe id="lineGraphFrame" src="" style="width: 100%; height: 80vh; border: none;"></iframe>
         </div>
+    </div>
+    <div id="county-stats" style="position: absolute; top: 10px; right: 10px; background: white; padding: 10px; border: 1px solid #ccc; display: none;">
+        <h4>County Statistics</h4>
+        <p id="county-name"></p>
+        <p id="total-infections"></p>
+        <!-- Add more stats as needed -->
     </div>
     <script src="new.js"></script>  
 </body>

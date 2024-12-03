@@ -196,6 +196,9 @@ Promise.all([
         // Remove any existing hospital markers
         hospitalGroup.selectAll("circle").remove();
     
+        // Get the current zoom transform
+        const currentTransform = d3.zoomTransform(svg.node());
+    
         // Add new hospital circles
         hospitalGroup.selectAll("circle")
             .data(aggregatedData, d => d.hospital_id)
@@ -209,14 +212,73 @@ Promise.all([
                 const coords = projection([+d.lon, +d.lat]);
                 return coords ? coords[1] : null;
             })
-            .attr("r", 5)
+            .attr("r", 5 / currentTransform.k) // Adjust radius based on zoom scale (1/k)
             .attr("fill", "red")
             .attr("opacity", 0.7)
+            .attr("transform", currentTransform) // Apply current zoom transform
             .on("mouseover", (event, d) => {
+                let latestBenchmark;
+                let mostFrequentBenchmark;
+    
+                if (selectedType === "all") {
+                    // Filter data for the current hospital
+                    const hospitalData = infectionData.filter(row => row.hospital_id === d.hospital_id);
+    
+                    // Find the most common national benchmark
+                    const benchmarkCounts = d3.rollup(
+                        hospitalData,
+                        v => v.length,
+                        row => row.compared_to_national
+                    );
+                    mostFrequentBenchmark = Array.from(benchmarkCounts)
+                        .reduce((mostCommon, current) => {
+                            return current[1] > mostCommon[1] ? current : mostCommon;
+                        }, ["No data", 0])[0]; // Default to "No data" if no rows exist
+    
+                    // Get the latest benchmark for all infections
+                    if (hospitalData.length > 0) {
+                        const latestData = hospitalData.reduce((latest, current) => {
+                            return new Date(current.start_date) > new Date(latest.start_date) ? current : latest;
+                        });
+                        latestBenchmark = latestData.compared_to_national;
+                    } else {
+                        latestBenchmark = "No data";
+                    }
+                } else {
+                    // Filter data for the current hospital and selected infection
+                    const hospitalData = infectionData.filter(
+                        row => row.hospital_id === d.hospital_id && normalizeInfectionName(row.measure_name) === selectedType
+                    );
+    
+                    // Find the most common national benchmark for the selected infection
+                    const benchmarkCounts = d3.rollup(
+                        hospitalData,
+                        v => v.length,
+                        row => row.compared_to_national
+                    );
+                    mostFrequentBenchmark = Array.from(benchmarkCounts)
+                        .reduce((mostCommon, current) => {
+                            return current[1] > mostCommon[1] ? current : mostCommon;
+                        }, ["No data", 0])[0]; // Default to "No data" if no rows exist
+    
+                    // Get the latest benchmark for the selected infection
+                    if (hospitalData.length > 0) {
+                        const latestData = hospitalData.reduce((latest, current) => {
+                            return new Date(current.start_date) > new Date(latest.start_date) ? current : latest;
+                        });
+                        latestBenchmark = latestData.compared_to_national;
+                    } else {
+                        latestBenchmark = "No data";
+                    }
+                }
+    
+                // Show the tooltip with both latest and most frequent benchmarks
                 tooltip.style("display", "block")
                     .html(`<strong>${d.hospital_id}</strong><br>
                            ${selectedType === "all" ? `All Infections: ${d.totalScore}` :
-                             `Infection Type: ${selectedType}<br>Count: ${d.totalScore || "No data"}`}`);
+                             `Infection Type: ${selectedType}<br>Count: ${d.totalScore || "No data"}`}<br>
+                           Latest Benchmark: ${latestBenchmark}<br>
+                           Most Frequent Benchmark: ${mostFrequentBenchmark}`);
             })
             .on("mousemove", (event) => {
                 tooltip.style("left", `${event.pageX + 10}px`)
@@ -231,42 +293,61 @@ Promise.all([
     }
     
     
-    // Aggregation logic for infection counts by hospital and infection type
-        function aggregateInfectionData(infectionData, selectedType) {
-            // Normalize infection names
-            const normalizedData = infectionData.map(d => ({
-                ...d,
-                measure_name: normalizeInfectionName(d.measure_name),
-                score: +d.score || 0 // Ensure the score is a number
-            }));
-
-            // Filter data by infection type
-            const filteredData = selectedType === "all"
-                ? normalizedData // Include all infections
-                : normalizedData.filter(d => d.measure_name === selectedType);
-
-            // Group by hospital_id and measure_name, summing scores
-            const aggregatedData = Array.from(
-                d3.rollup(
-                    filteredData,
-                    group => d3.sum(group, d => d.score), // Sum the scores
-                    d => d.hospital_id,
-                    d => d.measure_name
-                ),
-                ([hospital_id, infectionMap]) => ({
-                    hospital_id,
-                    totalScore: selectedType === "all" 
-                        ? Array.from(infectionMap.values()).reduce((sum, score) => sum + score, 0)
-                        : infectionMap.get(selectedType) || 0,
-                    lon: filteredData.find(d => d.hospital_id === hospital_id)?.lon,
-                    lat: filteredData.find(d => d.hospital_id === hospital_id)?.lat
-                })
-            );
-
-            return aggregatedData;
-        }
-
     
+    
+    
+    function aggregateInfectionData(infectionData, selectedType) {
+        // Define a date parser for the format "m/d/yy"
+        const parseDate = d3.timeParse("%m/%d/%y");
+    
+        // Normalize infection names and parse dates
+        const normalizedData = infectionData.map(d => ({
+            ...d,
+            measure_name: normalizeInfectionName(d.measure_name),
+            score: +d.score || 0, // Ensure the score is a number
+            compared_to_national: d.compared_to_national || "No data", // Include national benchmark
+            date: parseDate(d.start_date) // Parse the date
+        }));
+    
+        // Filter data by infection type
+        const filteredData = selectedType === "all"
+            ? normalizedData // Include all infections
+            : normalizedData.filter(d => d.measure_name === selectedType);
+    
+        // Group by hospital_id and measure_name, summing scores and finding the most recent benchmark
+        const aggregatedData = Array.from(
+            d3.rollup(
+                filteredData,
+                group => {
+                    const mostRecentEntry = group.reduce((latest, current) => {
+                        return current.date > latest.date ? current : latest;
+                    });
+                    return {
+                        totalScore: d3.sum(group, d => d.score), // Sum the scores
+                        compared_to_national: mostRecentEntry.compared_to_national // Use the most recent benchmark
+                    };
+                },
+                d => d.hospital_id,
+                d => d.measure_name
+            ),
+            ([hospital_id, infectionMap]) => ({
+                hospital_id,
+                totalScore: selectedType === "all" 
+                    ? Array.from(infectionMap.values()).reduce((sum, { totalScore }) => sum + totalScore, 0)
+                    : infectionMap.get(selectedType)?.totalScore || 0,
+                compared_to_national: selectedType === "all"
+                    ? "Varies" // If "all", benchmarks may vary
+                    : infectionMap.get(selectedType)?.compared_to_national || "No data",
+                lon: filteredData.find(d => d.hospital_id === hospital_id)?.lon,
+                lat: filteredData.find(d => d.hospital_id === hospital_id)?.lat
+            })
+        );
+    
+        return aggregatedData;
+    }
+
+
+
         // Calculate "all" infection count by aggregating across all infection types
         function calculateAllInfections(stateName) {
             const aggregatedInfections = {};
@@ -332,6 +413,8 @@ function populateDropdowns(infectionData) {
 }
 
 
+
+
 // Populate a single dropdown with search functionality
 function populateDropdown(selectId, inputId, options, onOptionChange = () => {}) {
     const select = document.getElementById(selectId);
@@ -376,6 +459,194 @@ function populateDropdown(selectId, inputId, options, onOptionChange = () => {})
         onOptionChange(select.value);
     });
 }
+
+
+function populateYearDropdown(infectionData) {
+    // Define a parser for dates in the "MM/DD/YYYY" format
+    const parseDate = d3.timeParse("%m/%d/%Y");
+
+    // Extract unique years from the parsed dates
+    const years = Array.from(
+        new Set(
+            infectionData.map(d => {
+                const parsedDate = parseDate(d.start_date); // Parse the date
+                if (parsedDate) {
+                    return parsedDate.getFullYear(); // Extract year
+                }
+                return null;
+            }).filter(year => year !== null) // Exclude invalid dates
+        )
+    ).sort();
+
+    console.log("Extracted Years:", years); // Debug log for unique years
+
+    // Select the dropdown and clear existing options
+    const yearDropdown = d3.select("#yearSelect");
+    yearDropdown.html(""); // Clear existing options
+
+    // Append "All Years" option
+    yearDropdown.append("option").attr("value", "all").text("All Years");
+
+    // Append unique years to the dropdown
+    years.forEach(year => {
+        yearDropdown.append("option").attr("value", year).text(year);
+    });
+
+    // Add change event listener
+    yearDropdown.on("change", updateMap);
+}
+
+
+
+
+
+
+// Filter infection data by year and type
+function filterDataByYearAndType(infectionData, selectedYear, selectedType) {
+    const filteredData = infectionData.filter(d => {
+        const year = d.start_date.split('/')[2]; // Extract year from start_date
+        const infectionTypeMatch = selectedType === "all" || normalizeInfectionName(d.measure_name) === selectedType;
+        const yearMatch = selectedYear === "all" || year === selectedYear;
+        return infectionTypeMatch && yearMatch;
+    });
+
+    return filteredData;
+}
+
+
+// Populate year dropdown
+const years = Array.from(new Set(infectionData.map(d => d.start_date.split('/')[2])));
+const yearDropdown = d3.select('#year-filter');
+yearDropdown.append("option").attr("value", "all").text("All Years");
+years.sort().forEach(year => {
+    yearDropdown.append("option").attr("value", year).text(year);
+});
+
+// Handle year selection changes
+d3.select("#year-filter").on("change", () => {
+    console.log("Year filter change event triggered");
+
+    // Get selected year
+    const selectedYear = d3.select("#year-filter").node().value;
+    console.log("Selected Year:", selectedYear);
+
+    // Recalculate infection data
+    infectionByState = calculateInfectionsByYear(infectionData, selectedYear);
+    console.log("Updated infectionByState:", infectionByState);
+
+    // Update the map and hospital markers
+    updateMapColors();
+    if (currentSelectedState) {
+        showHospitals(currentSelectedState);
+    }
+});
+
+// Function to recalculate infection data by year
+function calculateInfectionsByYear(infectionData, selectedYear) {
+    const filteredData = selectedYear === "all" 
+        ? infectionData 
+        : infectionData.filter(d => d.start_date.split('/')[2] === selectedYear);
+
+    const infectionByState = {};
+    filteredData.forEach(d => {
+        const state = d.state;
+        const score = +d.score || 0;
+        infectionByState[state] = (infectionByState[state] || 0) + score;
+    });
+
+    return infectionByState;
+}
+
+// Function to update map colors
+function updateMapColors() {
+    const maxInfections = d3.max(Object.values(infectionByState)) || 1;
+    colorScale.domain([0, maxInfections]);
+
+    states.transition()
+        .duration(750)
+        .attr("fill", d => {
+            const state = d.properties.NAME;
+            const infectionCount = infectionByState[state];
+            return infectionCount ? colorScale(infectionCount) : "#eee";
+        });
+}
+
+// Update map colors, hospital counts, and infection counts
+function updateMap() {
+    const selectedYear = d3.select("#yearSelect").node().value;
+    const selectedType = d3.select("#filter").node().value;
+
+    // Filter data based on year and type
+    const filteredData = filterDataByYearAndType(infectionData, selectedYear, selectedType);
+
+    // Aggregate data for map coloring
+    const infectionByState = {};
+    filteredData.forEach(d => {
+        const state = d.state;
+        const score = +d.score;
+        infectionByState[state] = (infectionByState[state] || 0) + score;
+    });
+
+    // Update state colors on the map
+    states.attr("fill", d => {
+        const state = d.properties.NAME;
+        const infectionCount = infectionByState[state];
+        return infectionCount ? colorScale(infectionCount) : "#eee";
+    });
+
+    // Update tooltip content on hover
+    states.on("mouseover", function(event, d) {
+        const state = d.properties.NAME;
+        const infectionCount = infectionByState[state] || "No data";
+        tooltip.style("display", "block")
+            .html(`<strong>${state}</strong><br>Infections: ${infectionCount}`);
+        d3.select(this).attr("stroke", "black").attr("stroke-width", 1);
+    })
+    .on("mouseout", function() {
+        tooltip.style("display", "none");
+        d3.select(this).attr("stroke", "#333").attr("stroke-width", 0.5);
+    });
+
+    // Update hospital markers if a state is selected
+    if (currentSelectedState) {
+        showHospitals(currentSelectedState);
+    }
+}
+
+
+// Event listeners for dropdown changes
+d3.select("#filter").on("change", updateMap);
+d3.select("#yearSelect").on("change", updateMap);
+
+d3.select("#filter").on("change", () => {
+    updateMap(); // Update the map colors and state fills
+
+    // If a state is currently selected, update the hospital markers
+    if (currentSelectedState) {
+        showHospitals(currentSelectedState);
+    }
+});
+
+// Initial map update
+updateMap();
+
+// Call the populateYearDropdown function after loading data
+Promise.all([
+    d3.json("GZ2.geojson"),
+    d3.csv("healthcare_data.csv")
+]).then(([geoData, infectionData]) => {
+    populateYearDropdown(infectionData);
+    // Add event listeners for year and type dropdowns
+    d3.select("#filter").on("change", updateMap);
+    d3.select("#yearSelect").on("change", updateMap);
+
+    // Populate dropdowns and initialize the map
+    populateDropdowns(infectionData);
+    updateMap();
+}).catch(error => {
+    console.error("Error loading data:", error);
+});
+
 
 
 function openModal(hospitalId) {
@@ -473,7 +744,9 @@ Promise.all([
     d3.json("GZ2.geojson"),
     d3.csv("healthcare_data.csv")
 ]).then(([geoData, infectionData]) => {
-    populateDropdowns(infectionData);
+
+    populateDropdowns(infectionData);   // Populates other dropdowns
+    updateMap();
 
     // Add other event listeners as needed (e.g., for state changes)
     d3.select("#stateSelect").on("change", function () {
@@ -647,6 +920,7 @@ Promise.all([
     d3.csv("healthcare_data.csv")  
 ]).then(([geoData, infectionData]) => {
     // Populate state, hospital, and infection type dropdowns
+
     populateDropdowns(infectionData);
 
     // Add event listener for state dropdown changes
@@ -670,26 +944,33 @@ Promise.all([
         
         
     
-        d3.select("#resetButton").on("click", () => {
-            currentSelectedState = null; // Reset the global variable
-        
-            // Reset zoom
-            svg.transition()
-                .duration(750)
-                .call(zoom.transform, d3.zoomIdentity);
-        
-            // Reset colors for all states 
-            states.transition().duration(750)
-                .attr("fill", d => {
-                    const state = d.properties.NAME;
-                    const infectionCount = infectionByState[state];
-                    return infectionCount ? colorScale(infectionCount) : "#eee";
-                })
-                .attr("opacity", 1);
-        
-            // Remove all hospital circles when reset is clicked
-            hospitalGroup.selectAll("circle").remove();
-        });
+d3.select("#resetButton").on("click", () => {
+    currentSelectedState = null; // Reset the global variable
+
+    // Reset zoom
+    svg.transition()
+        .duration(750)
+        .call(zoom.transform, d3.zoomIdentity);
+
+    // Reset colors for all states 
+    states.transition().duration(750)
+        .attr("fill", d => {
+            const state = d.properties.NAME;
+            const infectionCount = infectionByState[state];
+            return infectionCount ? colorScale(infectionCount) : "#eee";
+        })
+        .attr("opacity", 1);
+
+    // Remove all hospital circles when reset is clicked
+    hospitalGroup.selectAll("circle").remove();
+
+    // Reset dropdowns to default values
+    d3.select("#filter").property("value", "all");
+    d3.select("#yearSelect").property("value", "all");
+
+    // Optionally, update the map to reflect the reset state
+    updateMap();
+});
         
 
     
