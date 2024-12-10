@@ -215,9 +215,10 @@
             <option value="all">All Infection Types</option>
         </select>
     
-        <select id="yearSelect">
-            <option value="all">All Years</option>
-        </select>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span id="yearLabel">All Years</span>
+            <input id="yearSlider" type="range" min="0" step="1" />
+        </div>
     
         <button id="exportButton">Export Data</button>
         <button id="resetButton">Reset View</button>

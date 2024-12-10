@@ -4,7 +4,6 @@ const height = 600;
 
 let currentSelectedState = null; // Holds the name of the currently selected state
 
-
 // Append an SVG to the map div and create a group to hold the map elements
 const svg = d3.select("#map")
     .append("svg")
@@ -19,7 +18,7 @@ svg.append("rect")
     .attr("height", height)
     .attr("fill", "#cce7ff");
 
-// Optional: Add gradient ocean
+// Add gradient ocean
 svg.append("defs")
     .append("linearGradient")
     .attr("id", "ocean-gradient")
@@ -42,7 +41,7 @@ const hospitalGroup = svg.append("g"); // Group for hospitals
 
 // Define a color scale for infection counts
 const colorScale = d3.scaleSequential(d3.interpolateBlues)
-    .domain([500, 90000]); // Adjust max domain value based on infection data
+    .domain([500, 90000]); // Adjust max domain value if needed
 
 // Define a tooltip
 const tooltip = d3.select("body").append("div")
@@ -74,14 +73,14 @@ function normalizeInfectionName(infectionName) {
     return infectionMapping[infectionName] || infectionName;
 }
 
-
 // Load the GeoJSON data and infection data
 Promise.all([
-    d3.json("GZ2.geojson"), 
-    d3.csv("healthcare_data.csv")  
+    d3.json("GZ2.geojson"),
+    d3.csv("healthcare_data.csv")
 ]).then(([geoData, infectionData]) => {
+
     // Process infection data by state
-    const infectionByState = {};
+    let infectionByState = {};
     infectionData.forEach(d => {
         const state = d.state;
         const score = +d.score;
@@ -91,7 +90,6 @@ Promise.all([
     // Populate filter dropdown with unique infection types
     const infectionTypes = Array.from(new Set(infectionData.map(d => normalizeInfectionName(d.measure_name))));
     const filterDropdown = d3.select('#filter');
-    //filterDropdown.append("option").attr("value", "all").text("All Infections");
     infectionTypes.forEach(type => {
         filterDropdown.append("option").attr("value", type).text(type);
     });
@@ -102,9 +100,7 @@ Promise.all([
         .scale(1100);
     const path = d3.geoPath().projection(projection);
 
-    
-
-    // Bind data and create one path per GeoJSON feature
+    // Draw states
     const states = mapGroup.selectAll("path")
         .data(geoData.features)
         .enter()
@@ -113,48 +109,44 @@ Promise.all([
         .attr("fill", d => {
             const state = d.properties.NAME;
             const infectionCount = infectionByState[state];
-            return infectionCount ? colorScale(infectionCount) : "#eee"; // Fill color based on infection count
+            return infectionCount ? colorScale(infectionCount) : "#eee";
         })
         .attr("stroke", "#333")
         .attr("stroke-width", 0.5)
-        .on("mouseover", function(event, d) {
+        .on("mouseover", function (event, d) {
             const state = d.properties.NAME;
             const infectionCount = infectionByState[state] || "No data";
             tooltip.style("display", "block")
                 .html(`<strong>${state}</strong><br>Infections: ${infectionCount}`);
             d3.select(this).attr("stroke", "black").attr("stroke-width", 1);
         })
-        .on("mousemove", function(event) {
+        .on("mousemove", function (event) {
             tooltip.style("left", (event.pageX + 10) + "px")
                 .style("top", (event.pageY - 20) + "px");
         })
-        .on("mouseout", function() {
+        .on("mouseout", function () {
             tooltip.style("display", "none");
             d3.select(this).attr("stroke", "#333").attr("stroke-width", 0.5);
         })
-        .on("click", zoomToState); 
+        .on("click", zoomToState);
 
-    // Zoom function update: sync zoom with hospitals and map
+    // Zoom behavior
     const zoom = d3.zoom()
-        .scaleExtent([1, 8]) // Define zoom limits
+        .scaleExtent([1, 8])
         .on("zoom", (event) => {
-            // Apply zoom transformation to the map and hospitals
             mapGroup.attr("transform", event.transform);
-            //hospitalGroup.attr("transform", event.transform); // Apply the same transformation directly
-            // Reposition the hospital markers with scaling their size
             hospitalGroup.selectAll("circle")
                 .attr("transform", event.transform)
-                .attr("r", 5 / event.transform.k); // Adjust radius based on zoom scale (1/k)
+                .attr("r", 5 / event.transform.k);
         });
 
-            
-    svg.call(zoom); // Apply zoom behavior to the SVG
+    svg.call(zoom);
 
-    // Zoom-to-State function (focus on clicked state and gray out others)
+    // Zoom to selected state
     function zoomToState(event, d) {
         const stateName = d.properties.NAME;
-        currentSelectedState = stateName; // Update the global variable
-    
+        currentSelectedState = stateName;
+
         // Gray out other states
         states.attr("fill", feature => {
             const featureState = feature.properties.NAME;
@@ -162,11 +154,11 @@ Promise.all([
                 const infectionCount = infectionByState[featureState];
                 return infectionCount ? colorScale(infectionCount) : "#eee";
             } else {
-                return "#ccc"; 
+                return "#ccc";
             }
         });
-    
-        // Get bounds of the selected state and zoom in
+
+        // Zoom in on the selected state
         const [[x0, y0], [x1, y1]] = path.bounds(d);
         const dx = x1 - x0;
         const dy = y1 - y0;
@@ -174,68 +166,62 @@ Promise.all([
         const y = (y0 + y1) / 2;
         const scale = Math.max(1, Math.min(8, 0.9 / Math.max(dx / width, dy / height)));
         const translate = [width / 2 - scale * x, height / 2 - scale * y];
-    
+
         svg.transition()
             .duration(750)
             .call(zoom.transform, d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale));
-    
+
         showHospitals(stateName);
     }
-    
-        
 
     function showHospitals(stateName) {
         const selectedType = d3.select("#filter").node().value;
-    
+
         // Filter data for the selected state
         const stateData = infectionData.filter(d => d.state === stateName);
-    
+
         // Aggregate infection data by hospital
         const aggregatedData = aggregateInfectionData(stateData, selectedType);
-    
+
         // Remove any existing hospital markers
         hospitalGroup.selectAll("circle").remove();
-    
+
         // Get the current zoom transform
         const currentTransform = d3.zoomTransform(svg.node());
-    
+
         // Add new hospital circles
         hospitalGroup.selectAll("circle")
             .data(aggregatedData, d => d.hospital_id)
             .enter()
             .append("circle")
             .attr("cx", d => {
-                const coords = projection([+d.lon, +d.lat]); // Use coordinates
-                return coords ? coords[0] : null; // Ensure valid coordinates
+                const coords = projection([+d.lon, +d.lat]);
+                return coords ? coords[0] : null;
             })
             .attr("cy", d => {
                 const coords = projection([+d.lon, +d.lat]);
                 return coords ? coords[1] : null;
             })
-            .attr("r", 5 / currentTransform.k) // Adjust radius based on zoom scale (1/k)
+            .attr("r", 5 / currentTransform.k)
             .attr("fill", "red")
             .attr("opacity", 0.7)
-            .attr("transform", currentTransform) // Apply current zoom transform
+            .attr("transform", currentTransform)
             .on("mouseover", (event, d) => {
+                const selectedType = d3.select("#filter").node().value;
+
                 let latestBenchmark;
                 let mostFrequentBenchmark;
-    
+
                 if (selectedType === "all") {
-                    // Filter data for the current hospital
                     const hospitalData = infectionData.filter(row => row.hospital_id === d.hospital_id);
-    
-                    // Find the most common national benchmark
                     const benchmarkCounts = d3.rollup(
                         hospitalData,
                         v => v.length,
                         row => row.compared_to_national
                     );
                     mostFrequentBenchmark = Array.from(benchmarkCounts)
-                        .reduce((mostCommon, current) => {
-                            return current[1] > mostCommon[1] ? current : mostCommon;
-                        }, ["No data", 0])[0]; // Default to "No data" if no rows exist
-    
-                    // Get the latest benchmark for all infections
+                        .reduce((mostCommon, current) => current[1] > mostCommon[1] ? current : mostCommon, ["No data", 0])[0];
+
                     if (hospitalData.length > 0) {
                         const latestData = hospitalData.reduce((latest, current) => {
                             return new Date(current.start_date) > new Date(latest.start_date) ? current : latest;
@@ -245,23 +231,17 @@ Promise.all([
                         latestBenchmark = "No data";
                     }
                 } else {
-                    // Filter data for the current hospital and selected infection
                     const hospitalData = infectionData.filter(
                         row => row.hospital_id === d.hospital_id && normalizeInfectionName(row.measure_name) === selectedType
                     );
-    
-                    // Find the most common national benchmark for the selected infection
                     const benchmarkCounts = d3.rollup(
                         hospitalData,
                         v => v.length,
                         row => row.compared_to_national
                     );
                     mostFrequentBenchmark = Array.from(benchmarkCounts)
-                        .reduce((mostCommon, current) => {
-                            return current[1] > mostCommon[1] ? current : mostCommon;
-                        }, ["No data", 0])[0]; // Default to "No data" if no rows exist
-    
-                    // Get the latest benchmark for the selected infection
+                        .reduce((mostCommon, current) => current[1] > mostCommon[1] ? current : mostCommon, ["No data", 0])[0];
+
                     if (hospitalData.length > 0) {
                         const latestData = hospitalData.reduce((latest, current) => {
                             return new Date(current.start_date) > new Date(latest.start_date) ? current : latest;
@@ -271,60 +251,48 @@ Promise.all([
                         latestBenchmark = "No data";
                     }
                 }
-    
-                // Show the tooltip with both latest and most frequent benchmarks
+
                 tooltip.style("display", "block")
                     .html(`<strong>${d.hospital_id}</strong><br>
                            ${selectedType === "all" ? `All Infections: ${d.totalScore}` :
-                             `Infection Type: ${selectedType}<br>Count: ${d.totalScore || "No data"}`}<br>
+                            `Infection Type: ${selectedType}<br>Count: ${d.totalScore || "No data"}`}<br>
                            Latest Benchmark: ${latestBenchmark}<br>
                            Most Frequent Benchmark: ${mostFrequentBenchmark}`);
             })
             .on("mousemove", (event) => {
                 tooltip.style("left", `${event.pageX + 10}px`)
-                       .style("top", `${event.pageY - 20}px`);
+                    .style("top", `${event.pageY - 20}px`);
             })
             .on("mouseout", () => {
                 tooltip.style("display", "none");
             })
             .on("click", (event, d) => {
-                openModal(d.hospital_id); // Add the event listener here
+                openModal(d.hospital_id);
             });
     }
-    
-    
-    
-    
-    
+
     function aggregateInfectionData(infectionData, selectedType) {
-        // Define a date parser for the format "m/d/yy"
         const parseDate = d3.timeParse("%m/%d/%y");
-    
-        // Normalize infection names and parse dates
         const normalizedData = infectionData.map(d => ({
             ...d,
             measure_name: normalizeInfectionName(d.measure_name),
-            score: +d.score || 0, // Ensure the score is a number
-            compared_to_national: d.compared_to_national || "No data", // Include national benchmark
-            date: parseDate(d.start_date) // Parse the date
+            score: +d.score || 0,
+            compared_to_national: d.compared_to_national || "No data",
+            date: parseDate(d.start_date)
         }));
-    
-        // Filter data by infection type
+
         const filteredData = selectedType === "all"
-            ? normalizedData // Include all infections
+            ? normalizedData
             : normalizedData.filter(d => d.measure_name === selectedType);
-    
-        // Group by hospital_id and measure_name, summing scores and finding the most recent benchmark
+
         const aggregatedData = Array.from(
             d3.rollup(
                 filteredData,
                 group => {
-                    const mostRecentEntry = group.reduce((latest, current) => {
-                        return current.date > latest.date ? current : latest;
-                    });
+                    const mostRecentEntry = group.reduce((latest, current) => current.date > latest.date ? current : latest);
                     return {
-                        totalScore: d3.sum(group, d => d.score), // Sum the scores
-                        compared_to_national: mostRecentEntry.compared_to_national // Use the most recent benchmark
+                        totalScore: d3.sum(group, d => d.score),
+                        compared_to_national: mostRecentEntry.compared_to_national
                     };
                 },
                 d => d.hospital_id,
@@ -332,269 +300,88 @@ Promise.all([
             ),
             ([hospital_id, infectionMap]) => ({
                 hospital_id,
-                totalScore: selectedType === "all" 
+                totalScore: selectedType === "all"
                     ? Array.from(infectionMap.values()).reduce((sum, { totalScore }) => sum + totalScore, 0)
-                    : infectionMap.get(selectedType)?.totalScore || 0,
+                    : (infectionMap.get(selectedType)?.totalScore || 0),
                 compared_to_national: selectedType === "all"
-                    ? "Varies" // If "all", benchmarks may vary
-                    : infectionMap.get(selectedType)?.compared_to_national || "No data",
+                    ? "Varies"
+                    : (infectionMap.get(selectedType)?.compared_to_national || "No data"),
                 lon: filteredData.find(d => d.hospital_id === hospital_id)?.lon,
                 lat: filteredData.find(d => d.hospital_id === hospital_id)?.lat
             })
         );
-    
+
         return aggregatedData;
     }
 
-
-
-        // Calculate "all" infection count by aggregating across all infection types
-        function calculateAllInfections(stateName) {
-            const aggregatedInfections = {};
-
-            infectionData.forEach(d => {
-                const normalizedType = normalizeInfectionName(d.measure_name);
-                const state = d.state;
-                if (state === stateName) {
-                    aggregatedInfections[normalizedType] = (aggregatedInfections[normalizedType] || 0) + +d.score;
-                }
-            });
-
-            // Return total sum of all infections for the state
-            return Object.values(aggregatedInfections).reduce((sum, count) => sum + count, 0);
-        }
-        filterDropdown.on("change", () => {
-            if (currentSelectedState) {
-                // Update the hospital pins for the currently selected state
-                showHospitals(currentSelectedState);
-        
-                // Reapply the zoom and fill logic for the selected state
-                const selectedState = geoData.features.find(
-                    d => d.properties.NAME === currentSelectedState
-                );
-                if (selectedState) {
-                    const [[x0, y0], [x1, y1]] = path.bounds(selectedState);
-                    const dx = x1 - x0;
-                    const dy = y1 - y0;
-                    const x = (x0 + x1) / 2;
-                    const y = (y0 + y1) / 2;
-                    const scale = Math.max(1, Math.min(8, 0.9 / Math.max(dx / width, dy / height)));
-                    const translate = [width / 2 - scale * x, height / 2 - scale * y];
-        
-                    svg.transition()
-                        .duration(750)
-                        .call(zoom.transform, d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale));
-                }
-            }
+    function filterDataByYearAndType(infectionData, selectedYear, selectedType) {
+        return infectionData.filter(d => {
+            const year = d.start_date.split('/')[2];
+            const infectionTypeMatch = (selectedType === "all" || normalizeInfectionName(d.measure_name) === selectedType);
+            const yearMatch = (selectedYear === "all" || year === selectedYear);
+            return infectionTypeMatch && yearMatch;
         });
-        
-
-// Populate dropdowns after loading data
-function populateDropdowns(infectionData) {
-    const states = Array.from(new Set(infectionData.map(d => d.state))).sort();
-    const hospitals = Array.from(new Set(infectionData.map(d => d.hospital_id))).sort();
-    const infections = Array.from(new Set(infectionData.map(d => normalizeInfectionName(d.measure_name))));
-
-    // Populate the state dropdown and attach a callback to update hospitals
-    populateDropdown("stateSelect", "stateInput", states, (selectedState) => {
-        const filteredHospitals = selectedState === "all"
-            ? hospitals
-            : Array.from(new Set(infectionData
-                  .filter(d => d.state === selectedState)
-                  .map(d => d.hospital_id)
-              )).sort();
-
-        updateHospitalDropdown(filteredHospitals);
-    });
-
-    // Populate the hospital and infection type dropdowns
-    populateDropdown("hospitalSelect", "hospitalInput", hospitals);
-    populateDropdown("infectionSelect", "infectionInput", infections);
-}
-
-
-
-
-// Populate a single dropdown with search functionality
-function populateDropdown(selectId, inputId, options, onOptionChange = () => {}) {
-    const select = document.getElementById(selectId);
-    const input = document.getElementById(inputId);
-
-    // Add all options to the dropdown
-    options.forEach(option => {
-        const opt = document.createElement("option");
-        opt.value = option;
-        opt.text = option;
-        select.appendChild(opt);
-    });
-
-    // Add event listener to filter options based on input
-    input.addEventListener("input", () => {
-        const filter = input.value.toLowerCase();
-        select.innerHTML = ""; // Clear existing options
-
-        // Add filtered options to the dropdown
-        options
-            .filter(option => option.toLowerCase().includes(filter))
-            .forEach(option => {
-                const opt = document.createElement("option");
-                opt.value = option;
-                opt.text = option;
-                select.appendChild(opt);
-            });
-
-        // Auto-select the first matching option
-        if (select.options.length > 0) {
-            select.selectedIndex = 0;
-        }
-
-        // Trigger the callback with the new selection (if valid)
-        const selectedValue = select.options[0]?.value || "";
-        onOptionChange(selectedValue);
-    });
-
-    // Sync input value with selected dropdown option
-    select.addEventListener("change", () => {
-        input.value = select.value;
-        onOptionChange(select.value);
-    });
-}
-
-
-function populateYearDropdown(infectionData) {
-    // Define a parser for dates in the "MM/DD/YYYY" format
-    const parseDate = d3.timeParse("%m/%d/%Y");
-
-    // Extract unique years from the parsed dates
-    const years = Array.from(
-        new Set(
-            infectionData.map(d => {
-                const parsedDate = parseDate(d.start_date); // Parse the date
-                if (parsedDate) {
-                    return parsedDate.getFullYear(); // Extract year
-                }
-                return null;
-            }).filter(year => year !== null) // Exclude invalid dates
-        )
-    ).sort();
-
-    console.log("Extracted Years:", years); // Debug log for unique years
-
-    // Select the dropdown and clear existing options
-    const yearDropdown = d3.select("#yearSelect");
-    yearDropdown.html(""); // Clear existing options
-
-    // Append "All Years" option
-    yearDropdown.append("option").attr("value", "all").text("All Years");
-
-    // Append unique years to the dropdown
-    years.forEach(year => {
-        yearDropdown.append("option").attr("value", year).text(year);
-    });
-
-    // Add change event listener
-    yearDropdown.on("change", updateMap);
-}
-
-
-
-
-
-
-// Filter infection data by year and type
-function filterDataByYearAndType(infectionData, selectedYear, selectedType) {
-    const filteredData = infectionData.filter(d => {
-        const year = d.start_date.split('/')[2]; // Extract year from start_date
-        const infectionTypeMatch = selectedType === "all" || normalizeInfectionName(d.measure_name) === selectedType;
-        const yearMatch = selectedYear === "all" || year === selectedYear;
-        return infectionTypeMatch && yearMatch;
-    });
-
-    return filteredData;
-}
-
-
-// Populate year dropdown
-const years = Array.from(new Set(infectionData.map(d => d.start_date.split('/')[2])));
-const yearDropdown = d3.select('#year-filter');
-yearDropdown.append("option").attr("value", "all").text("All Years");
-years.sort().forEach(year => {
-    yearDropdown.append("option").attr("value", year).text(year);
-});
-
-// Handle year selection changes
-d3.select("#year-filter").on("change", () => {
-    console.log("Year filter change event triggered");
-
-    // Get selected year
-    const selectedYear = d3.select("#year-filter").node().value;
-    console.log("Selected Year:", selectedYear);
-
-    // Recalculate infection data
-    infectionByState = calculateInfectionsByYear(infectionData, selectedYear);
-    console.log("Updated infectionByState:", infectionByState);
-
-    // Update the map and hospital markers
-    updateMapColors();
-    if (currentSelectedState) {
-        showHospitals(currentSelectedState);
     }
-});
 
-// Function to recalculate infection data by year
-function calculateInfectionsByYear(infectionData, selectedYear) {
-    const filteredData = selectedYear === "all" 
-        ? infectionData 
-        : infectionData.filter(d => d.start_date.split('/')[2] === selectedYear);
+// After loading infectionData and processing it as usual:
 
-    const infectionByState = {};
-    filteredData.forEach(d => {
-        const state = d.state;
-        const score = +d.score || 0;
-        infectionByState[state] = (infectionByState[state] || 0) + score;
-    });
+// Extract and sort years
+const years = Array.from(new Set(infectionData.map(d => d.start_date.split('/')[2]))).sort();
 
-    return infectionByState;
+// Create an array that includes "all" at the start
+const allValues = ["all", ...years];
+
+const yearSlider = document.getElementById("yearSlider");
+const yearLabel = document.getElementById("yearLabel");
+
+// Configure the slider
+yearSlider.min = 0;
+yearSlider.max = allValues.length - 1;
+yearSlider.value = 0; // default to "all" years
+
+// Function to update label and map when the slider value changes
+function updateYearLabelAndMap() {
+    const selectedIndex = parseInt(yearSlider.value, 10);
+    const selectedYear = allValues[selectedIndex];
+
+    // Update the label text
+    yearLabel.textContent = (selectedYear === "all") ? "All Years" : selectedYear;
+
+    // Re-run updateMap to apply the new year filter
+    updateMap();
 }
 
-// Function to update map colors
-function updateMapColors() {
-    const maxInfections = d3.max(Object.values(infectionByState)) || 1;
-    colorScale.domain([0, maxInfections]);
+// Listen for slider changes
+yearSlider.addEventListener("input", updateYearLabelAndMap);
 
-    states.transition()
-        .duration(750)
-        .attr("fill", d => {
-            const state = d.properties.NAME;
-            const infectionCount = infectionByState[state];
-            return infectionCount ? colorScale(infectionCount) : "#eee";
-        });
-}
-
-// Update map colors, hospital counts, and infection counts
+// Modify updateMap to use the slider-selected year instead of the dropdown
 function updateMap() {
-    const selectedYear = d3.select("#yearSelect").node().value;
+    // Get selected year from slider instead of dropdown
+    const selectedIndex = parseInt(yearSlider.value, 10);
+    const selectedYear = allValues[selectedIndex];
+
+    // Selected infection type from dropdown remains the same
     const selectedType = d3.select("#filter").node().value;
 
-    // Filter data based on year and type
+    // Filter data based on the slider-selected year and current infection type
     const filteredData = filterDataByYearAndType(infectionData, selectedYear, selectedType);
 
-    // Aggregate data for map coloring
-    const infectionByState = {};
+    // Recompute infection counts by state
+    infectionByState = {};
     filteredData.forEach(d => {
         const state = d.state;
         const score = +d.score;
         infectionByState[state] = (infectionByState[state] || 0) + score;
     });
 
-    // Update state colors on the map
+    // Update state fills
     states.attr("fill", d => {
         const state = d.properties.NAME;
         const infectionCount = infectionByState[state];
         return infectionCount ? colorScale(infectionCount) : "#eee";
     });
 
-    // Update tooltip content on hover
+    // Update tooltip content
     states.on("mouseover", function(event, d) {
         const state = d.properties.NAME;
         const infectionCount = infectionByState[state] || "No data";
@@ -607,379 +394,254 @@ function updateMap() {
         d3.select(this).attr("stroke", "#333").attr("stroke-width", 0.5);
     });
 
-    // Update hospital markers if a state is selected
+    // If a state is currently selected, update the hospitals for that state
     if (currentSelectedState) {
         showHospitals(currentSelectedState);
     }
 }
 
+// Initialize the map view with default slider value
+updateYearLabelAndMap();
 
-// Event listeners for dropdown changes
-d3.select("#filter").on("change", updateMap);
-d3.select("#yearSelect").on("change", updateMap);
+// Remove or comment out lines related to #yearSelect, for example:
+// const yearDropdown = d3.select('#yearSelect');
+// d3.select("#yearSelect").on("change", updateMap);
+// ... etc.
 
-d3.select("#filter").on("change", () => {
-    updateMap(); // Update the map colors and state fills
 
-    // If a state is currently selected, update the hospital markers
-    if (currentSelectedState) {
-        showHospitals(currentSelectedState);
+    // Populate dropdowns
+    function populateDropdowns(infectionData) {
+        const states = Array.from(new Set(infectionData.map(d => d.state))).sort();
+        const hospitals = Array.from(new Set(infectionData.map(d => d.hospital_id))).sort();
+        const infections = Array.from(new Set(infectionData.map(d => normalizeInfectionName(d.measure_name))));
+
+        populateDropdown("stateSelect", "stateInput", states, (selectedState) => {
+            const filteredHospitals = selectedState === "all"
+                ? hospitals
+                : Array.from(new Set(infectionData.filter(d => d.state === selectedState).map(d => d.hospital_id))).sort();
+            updateHospitalDropdown(filteredHospitals);
+        });
+
+        populateDropdown("hospitalSelect", "hospitalInput", hospitals);
+        populateDropdown("infectionSelect", "infectionInput", infections);
     }
-});
 
-// Initial map update
-updateMap();
-
-// Call the populateYearDropdown function after loading data
-Promise.all([
-    d3.json("GZ2.geojson"),
-    d3.csv("healthcare_data.csv")
-]).then(([geoData, infectionData]) => {
-    populateYearDropdown(infectionData);
-    // Add event listeners for year and type dropdowns
-    d3.select("#filter").on("change", updateMap);
-    d3.select("#yearSelect").on("change", updateMap);
-
-    // Populate dropdowns and initialize the map
-    populateDropdowns(infectionData);
-    updateMap();
-}).catch(error => {
-    console.error("Error loading data:", error);
-});
-
-
-
-function openModal(hospitalId) {
-    const modal = document.getElementById("lineGraphModal");
-    const iframe = document.getElementById("lineGraphFrame");
-
-    // Set the iframe source to the linegraph HTML with a query parameter for the hospital ID
-    iframe.src = `multi-series_linegraph-2.html?hospital=${encodeURIComponent(hospitalId)}`;
-    modal.style.display = "block";
-
-    const closeButton = document.getElementsByClassName("close")[0];
-    closeButton.onclick = () => { modal.style.display = "none"; };
-
-    window.onclick = event => {
-        if (event.target === modal) {
-            modal.style.display = "none";
-        }
-    };
-}
-
-function loadLineGraph(hospitalId) {
-    const container = document.getElementById("lineGraphContainer");
-    container.innerHTML = ""; // Clear previous content
-
-    // Fetch and process the CSV
-    d3.csv("healthcare_data.csv").then(data => {
-        const parseDate = d3.timeParse("%m/%d/%Y");
-        const filteredData = data.filter(d => d.hospital_id === hospitalId).map(d => ({
-            date: parseDate(d["start_date"]),
-            score: +d["score"]
-        }));
-
-        renderLineGraph(filteredData, container);
-    }).catch(error => console.error("Error loading data:", error));
-}
-
-function renderLineGraph(data, container) {
-    const width = 600;
-    const height = 400;
-    const margin = { top: 20, right: 30, bottom: 50, left: 50 };
-
-    const svg = d3.select(container).append("svg")
-        .attr("width", width)
-        .attr("height", height);
-
-    const x = d3.scaleTime()
-        .domain(d3.extent(data, d => d.date))
-        .range([margin.left, width - margin.right]);
-
-    const y = d3.scaleLinear()
-        .domain([0, d3.max(data, d => d.score)])
-        .range([height - margin.bottom, margin.top]);
-
-    const line = d3.line()
-        .x(d => x(d.date))
-        .y(d => y(d.score));
-
-    svg.append("path")
-        .datum(data)
-        .attr("fill", "none")
-        .attr("stroke", "steelblue")
-        .attr("stroke-width", 2)
-        .attr("d", line);
-
-    svg.append("g")
-        .attr("transform", `translate(0,${height - margin.bottom})`)
-        .call(d3.axisBottom(x).ticks(5).tickFormat(d3.timeFormat("%b %Y")))
-        .selectAll("text")
-        .attr("transform", "rotate(-45)")
-        .style("text-anchor", "end");
-
-    svg.append("g")
-        .attr("transform", `translate(${margin.left},0)`)
-        .call(d3.axisLeft(y));
-
-    svg.append("text")
-        .attr("x", width / 2)
-        .attr("y", height - 10)
-        .attr("text-anchor", "middle")
-        .text("Date");
-
-    svg.append("text")
-        .attr("x", -height / 2)
-        .attr("y", 15)
-        .attr("text-anchor", "middle")
-        .attr("transform", "rotate(-90)")
-        .text("Score");
-}
-
-
-
-
-// Load dropdown options and add event listeners
-Promise.all([
-    d3.json("GZ2.geojson"),
-    d3.csv("healthcare_data.csv")
-]).then(([geoData, infectionData]) => {
-
-    populateDropdowns(infectionData);   // Populates other dropdowns
-    updateMap();
-
-    // Add other event listeners as needed (e.g., for state changes)
-    d3.select("#stateSelect").on("change", function () {
-        const selectedState = this.value;
-
-        // Filter hospitals based on selected state
-        const filteredHospitals = selectedState === "all"
-            ? Array.from(new Set(infectionData.map(d => d.hospital_id))).sort()
-            : Array.from(new Set(infectionData.filter(d => d.state === selectedState).map(d => d.hospital_id))).sort();
-
-        populateDropdown("hospitalSelect", "hospitalInput", filteredHospitals);
-    });
-}).catch(error => {
-    console.error("Error loading data:", error);
-});
-
-
-function updateHospitalDropdown(hospitals) {
-    const hospitalSelect = document.getElementById("hospitalSelect");
-    const hospitalInput = document.getElementById("hospitalInput");
-
-    // Clear existing dropdown options
-    hospitalSelect.innerHTML = "";
-    hospitalInput.value = ""; // Clear the search input
-
-    // Add "All Hospitals" as a default option
-    const allOption = document.createElement("option");
-    allOption.value = "all";
-    allOption.text = "All Hospitals";
-    hospitalSelect.appendChild(allOption);
-
-    // Populate the dropdown with updated hospitals
-    hospitals.forEach(hospital => {
-        const option = document.createElement("option");
-        option.value = hospital;
-        option.text = hospital;
-        hospitalSelect.appendChild(option);
-    });
-
-    // Sync search functionality with the updated dropdown
-    hospitalInput.addEventListener("input", () => {
-        const filter = hospitalInput.value.toLowerCase();
-        hospitalSelect.innerHTML = ""; // Clear dropdown
-        hospitals
-            .filter(hospital => hospital.toLowerCase().includes(filter))
-            .forEach(hospital => {
-                const option = document.createElement("option");
-                option.value = hospital;
-                option.text = hospital;
-                hospitalSelect.appendChild(option);
-            });
-
-        // Auto-select the first matching option
-        if (hospitalSelect.options.length > 0) {
-            hospitalSelect.selectedIndex = 0;
-        }
-    });
-
-    hospitalSelect.addEventListener("change", () => {
-        hospitalInput.value = hospitalSelect.value;
-    });
-}
-
-
-
-// Manage visibility of dropdowns
-function setupDropdownVisibility() {
-    const inputs = [
-        { inputId: "stateInput", dropdownId: "stateSelect" },
-        { inputId: "hospitalInput", dropdownId: "hospitalSelect" },
-        { inputId: "infectionInput", dropdownId: "infectionSelect" }
-    ];
-
-    inputs.forEach(({ inputId, dropdownId }) => {
+    function populateDropdown(selectId, inputId, options, onOptionChange = () => { }) {
+        const select = document.getElementById(selectId);
         const input = document.getElementById(inputId);
-        const dropdown = document.getElementById(dropdownId);
 
-        // Hide all dropdowns initially
-        dropdown.style.display = "none";
+        options.forEach(option => {
+            const opt = document.createElement("option");
+            opt.value = option;
+            opt.text = option;
+            select.appendChild(opt);
+        });
 
-        // Add focus listener to the input
-        input.addEventListener("focus", () => {
-            // Hide all other dropdowns
-            inputs.forEach(({ dropdownId: otherDropdownId }) => {
-                if (dropdownId !== otherDropdownId) {
-                    document.getElementById(otherDropdownId).style.display = "none";
-                }
+        input.addEventListener("input", () => {
+            const filter = input.value.toLowerCase();
+            select.innerHTML = "";
+            options.filter(option => option.toLowerCase().includes(filter))
+                .forEach(option => {
+                    const opt = document.createElement("option");
+                    opt.value = option;
+                    opt.text = option;
+                    select.appendChild(opt);
+                });
+
+            if (select.options.length > 0) {
+                select.selectedIndex = 0;
+            }
+
+            const selectedValue = select.options[0]?.value || "";
+            onOptionChange(selectedValue);
+        });
+
+        select.addEventListener("change", () => {
+            input.value = select.value;
+            onOptionChange(select.value);
+        });
+    }
+
+    function updateHospitalDropdown(hospitals) {
+        const hospitalSelect = document.getElementById("hospitalSelect");
+        const hospitalInput = document.getElementById("hospitalInput");
+
+        hospitalSelect.innerHTML = "";
+        hospitalInput.value = "";
+
+        const allOption = document.createElement("option");
+        allOption.value = "all";
+        allOption.text = "All Hospitals";
+        hospitalSelect.appendChild(allOption);
+
+        hospitals.forEach(hospital => {
+            const option = document.createElement("option");
+            option.value = hospital;
+            option.text = hospital;
+            hospitalSelect.appendChild(option);
+        });
+
+        hospitalInput.addEventListener("input", () => {
+            const filter = hospitalInput.value.toLowerCase();
+            hospitalSelect.innerHTML = "";
+            hospitals
+                .filter(hospital => hospital.toLowerCase().includes(filter))
+                .forEach(hospital => {
+                    const option = document.createElement("option");
+                    option.value = hospital;
+                    option.text = hospital;
+                    hospitalSelect.appendChild(option);
+                });
+
+            if (hospitalSelect.options.length > 0) {
+                hospitalSelect.selectedIndex = 0;
+            }
+        });
+
+        hospitalSelect.addEventListener("change", () => {
+            hospitalInput.value = hospitalSelect.value;
+        });
+    }
+
+    function setupDropdownVisibility() {
+        const inputs = [
+            { inputId: "stateInput", dropdownId: "stateSelect" },
+            { inputId: "hospitalInput", dropdownId: "hospitalSelect" },
+            { inputId: "infectionInput", dropdownId: "infectionSelect" }
+        ];
+
+        inputs.forEach(({ inputId, dropdownId }) => {
+            const input = document.getElementById(inputId);
+            const dropdown = document.getElementById(dropdownId);
+
+            dropdown.style.display = "none";
+
+            input.addEventListener("focus", () => {
+                inputs.forEach(({ dropdownId: otherDropdownId }) => {
+                    if (dropdownId !== otherDropdownId) {
+                        document.getElementById(otherDropdownId).style.display = "none";
+                    }
+                });
+                dropdown.style.display = "block";
             });
 
-            // Show the current dropdown
-            dropdown.style.display = "block";
-        });
+            input.addEventListener("blur", () => {
+                setTimeout(() => dropdown.style.display = "none", 200);
+            });
 
-        // Add blur listener to hide the dropdown when clicking outside
-        input.addEventListener("blur", () => {
-            setTimeout(() => dropdown.style.display = "none", 200); // Delay to allow option selection
+            dropdown.addEventListener("change", () => {
+                input.value = dropdown.value;
+                dropdown.style.display = "none";
+            });
         });
+    }
 
-        // Keep input in sync with the dropdown
-        dropdown.addEventListener("change", () => {
-            input.value = dropdown.value;
-            dropdown.style.display = "none"; // Hide the dropdown after selection
-        });
+    setupDropdownVisibility();
+
+    // Export modal logic
+    const exportButton = document.getElementById("exportButton");
+    const exportModal = document.getElementById("exportModal");
+    const closeModalButton = document.getElementById("closeModalButton");
+
+    exportButton.addEventListener("click", () => {
+        exportModal.style.display = "block";
     });
-}
-// Call this function after populating dropdowns
-setupDropdownVisibility();
 
-        
+    closeModalButton.addEventListener("click", () => {
+        exportModal.style.display = "none";
+    });
 
-// Event listeners for modal
-const exportButton = document.getElementById("exportButton");
-const exportModal = document.getElementById("exportModal");
-const closeModalButton = document.getElementById("closeModalButton");
+    document.getElementById("exportCsvButton").addEventListener("click", () => {
+        const selectedState = document.getElementById("stateSelect").value;
+        const selectedHospital = document.getElementById("hospitalSelect").value;
+        const selectedInfection = document.getElementById("infectionSelect").value;
 
-exportButton.addEventListener("click", () => {
-    exportModal.style.display = "block";
-});
+        const filteredData = infectionData.filter(d =>
+            (selectedState === "all" || d.state === selectedState) &&
+            (selectedHospital === "all" || d.hospital_id === selectedHospital) &&
+            (selectedInfection === "all" || normalizeInfectionName(d.measure_name) === selectedInfection)
+        );
 
-closeModalButton.addEventListener("click", () => {
-    exportModal.style.display = "none";
-});
+        const columns = [
+            "l", "facility_id", "hospital_id", "address", "city", "state",
+            "zip_code", "county_name", "measure_name", "compared_to_national",
+            "score", "start_date", "end_date", "original_Address", "lat", "lon"
+        ];
 
-// Export CSV logic
-// Export CSV logic for all columns
-document.getElementById("exportCsvButton").addEventListener("click", () => {
-    const selectedState = document.getElementById("stateSelect").value;
-    const selectedHospital = document.getElementById("hospitalSelect").value;
-    const selectedInfection = document.getElementById("infectionSelect").value;
+        const csvContent = [
+            columns.join(","),
+            ...filteredData.map(d => columns.map(col => d[col] || "").join(","))
+        ].join("\n");
 
-    // Filter data based on dropdown selections
-    const filteredData = infectionData.filter(d =>
-        (selectedState === "all" || d.state === selectedState) &&
-        (selectedHospital === "all" || d.hospital_id === selectedHospital) &&
-        (selectedInfection === "all" || normalizeInfectionName(d.measure_name) === selectedInfection)
-    );
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "HA-Infections.csv";
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
 
-    // Define all columns (A-P)
-    const columns = [
-        "l", "facility_id", "hospital_id", "address", "city", "state",
-        "zip_code", "county_name", "measure_name", "compared_to_national",
-        "score", "start_date", "end_date", "original_Address", "lat", "lon"
-    ];
+        exportModal.style.display = "none";
+    });
 
-    // Create CSV content
-    const csvContent = [
-        columns.join(","), // Add header row
-        ...filteredData.map(d => columns.map(col => d[col] || "").join(",")) // Map data rows
-    ].join("\n");
-
-    // Trigger file download
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "HA-Infections.csv";
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    // Close the modal after export
-    document.getElementById("exportModal").style.display = "none";
-});
-
-
-
-// Populate dropdowns after loading data
-// Populate dropdowns after loading data
-Promise.all([
-    d3.json("GZ2.geojson"), 
-    d3.csv("healthcare_data.csv")  
-]).then(([geoData, infectionData]) => {
-    // Populate state, hospital, and infection type dropdowns
-
+    // Additional dropdown initialization
     populateDropdowns(infectionData);
 
-    // Add event listener for state dropdown changes
+    document.getElementById("stateSelect").value = "all";
+    document.getElementById("hospitalSelect").value = "all";
+    document.getElementById("infectionSelect").value = "all";
+
+    function populateInfectionDropdown(infections) {
+        const infectionSelect = document.getElementById('infectionSelect');
+        infectionSelect.innerHTML = '';
+        infections.forEach(infection => {
+            const option = document.createElement('option');
+            option.value = infection;
+            option.textContent = infection;
+            infectionSelect.appendChild(option);
+        });
+    }
+
+    const uniqueInfections = Array.from(new Set(infectionData.map(d => normalizeInfectionName(d.measure_name))));
+    populateInfectionDropdown(uniqueInfections);
+
     d3.select("#stateSelect").on("change", function () {
         const selectedState = this.value;
-
-        // Filter hospitals based on selected state
         const filteredHospitals = selectedState === "all"
             ? Array.from(new Set(infectionData.map(d => d.hospital_id))).sort()
             : Array.from(new Set(infectionData.filter(d => d.state === selectedState).map(d => d.hospital_id))).sort();
-
         updateHospitalDropdown(filteredHospitals);
     });
 
-}).catch(error => {
-    console.error("Error loading data:", error);
-});
+    // Reset view
+    d3.select("#resetButton").on("click", () => {
+        currentSelectedState = null;
+        svg.transition()
+            .duration(750)
+            .call(zoom.transform, d3.zoomIdentity);
 
+        states.transition().duration(750)
+            .attr("fill", d => {
+                const state = d.properties.NAME;
+                const infectionCount = infectionByState[state];
+                return infectionCount ? colorScale(infectionCount) : "#eee";
+            })
+            .attr("opacity", 1);
 
+        hospitalGroup.selectAll("circle").remove();
 
-        
-        
-    
-d3.select("#resetButton").on("click", () => {
-    currentSelectedState = null; // Reset the global variable
+        d3.select("#filter").property("value", "all");
+        d3.select("#yearSelect").property("value", "all");
+        updateMap();
+    });
 
-    // Reset zoom
-    svg.transition()
-        .duration(750)
-        .call(zoom.transform, d3.zoomIdentity);
-
-    // Reset colors for all states 
-    states.transition().duration(750)
-        .attr("fill", d => {
-            const state = d.properties.NAME;
-            const infectionCount = infectionByState[state];
-            return infectionCount ? colorScale(infectionCount) : "#eee";
-        })
-        .attr("opacity", 1);
-
-    // Remove all hospital circles when reset is clicked
-    hospitalGroup.selectAll("circle").remove();
-
-    // Reset dropdowns to default values
-    d3.select("#filter").property("value", "all");
-    d3.select("#yearSelect").property("value", "all");
-
-    // Optionally, update the map to reflect the reset state
-    updateMap();
-});
-        
-
-    
     // Add a legend for the color scale
     const legendWidth = 300;
     const legendHeight = 10;
 
     const legendGroup = svg.append("g")
-    .attr("transform", `translate(${width - legendWidth - 50},${height - 60})`);
+        .attr("transform", `translate(${width - legendWidth - 50},${height - 60})`);
 
     legendGroup.append("rect")
         .attr("width", legendWidth + 20)
@@ -995,7 +657,6 @@ d3.select("#resetButton").on("click", () => {
         .attr("text-anchor", "middle")
         .attr("font-size", 14)
         .text("Infection Counts");
-
 
     const legendSvg = svg.append("g")
         .attr("transform", `translate(${width - legendWidth - 20},${height - 30})`);
@@ -1027,25 +688,101 @@ d3.select("#resetButton").on("click", () => {
         .attr("height", legendHeight)
         .style("fill", "url(#gradient)");
 
+    updateMap();
+
 }).catch(error => {
     console.error("Error loading data:", error);
-    
-
 });
 
-// Relative path to the hospital icon PNG
-const hospitalIconUrl = "hospital-icon.png"; // Ensure this is the correct file name
+// Modal and line graph functions
+function openModal(hospitalId) {
+    const modal = document.getElementById("lineGraphModal");
+    const iframe = document.getElementById("lineGraphFrame");
 
-// Assuming you have a D3 selection for your map
-d3.select("#map")
-  .selectAll("image")
-  .data(hospitals) // Replace with your data array
-  .enter()
-  .append("image") // Use "image" instead of "svg:image"
-  .attr("xlink:href", hospitalIconUrl) // Use the PNG image URL
-  .attr("width", 20) // Adjust size as needed
-  .attr("height", 20)
-  .attr("x", d => projection([d.longitude, d.latitude])[0] - 10) // Adjust positioning
-  .attr("y", d => projection([d.longitude, d.latitude])[1] - 10);
+    iframe.src = `multi-series_linegraph-2.html?hospital=${encodeURIComponent(hospitalId)}`;
+    modal.style.display = "block";
+
+    const closeButton = document.getElementsByClassName("close")[0];
+    closeButton.onclick = () => { modal.style.display = "none"; };
+
+    window.onclick = event => {
+        if (event.target === modal) {
+            modal.style.display = "none";
+        }
+    };
+}
 
 
+// After loading infectionData and extracting years:
+const years = Array.from(new Set(infectionData.map(d => d.start_date.split('/')[2]))).sort();
+
+// The first step is "All Years", then the years follow
+// For example, index 0 = "all", index 1 = first year, etc.
+const allValues = ["all", ...years];
+
+const yearSlider = document.getElementById("yearSlider");
+const yearLabel = document.getElementById("yearLabel");
+
+// Set slider min, max, and initial value
+yearSlider.min = 0;
+yearSlider.max = allValues.length - 1;
+yearSlider.value = 0; // 0 corresponds to "all"
+
+// Update the label whenever the slider changes
+function updateYearLabelAndMap() {
+    const selectedIndex = parseInt(yearSlider.value, 10);
+    const selectedYear = allValues[selectedIndex];
+
+    // Update the label text
+    yearLabel.textContent = selectedYear === "all" ? "All Years" : selectedYear;
+
+    // Update the map with the new selected year and current filter
+    updateMap();
+}
+
+// Listen for changes on the slider
+yearSlider.addEventListener("input", updateYearLabelAndMap);
+
+// Modify updateMap() to get the selected year from the slider instead of dropdown
+function updateMap() {
+    const selectedIndex = parseInt(yearSlider.value, 10);
+    const selectedYear = allValues[selectedIndex];
+    const selectedType = d3.select("#filter").node().value;
+
+    const filteredData = filterDataByYearAndType(infectionData, selectedYear, selectedType);
+
+    // Recompute infection counts by state for updated year/type
+    infectionByState = {};
+    filteredData.forEach(d => {
+        const state = d.state;
+        const score = +d.score;
+        infectionByState[state] = (infectionByState[state] || 0) + score;
+    });
+
+    // Update state colors
+    states.attr("fill", d => {
+        const state = d.properties.NAME;
+        const infectionCount = infectionByState[state];
+        return infectionCount ? colorScale(infectionCount) : "#eee";
+    });
+
+    // Update tooltip content and hospitals if needed
+    states.on("mouseover", function (event, d) {
+        const state = d.properties.NAME;
+        const infectionCount = infectionByState[state] || "No data";
+        tooltip.style("display", "block")
+            .html(`<strong>${state}</strong><br>Infections: ${infectionCount}`);
+        d3.select(this).attr("stroke", "black").attr("stroke-width", 1);
+    })
+    .on("mouseout", function () {
+        tooltip.style("display", "none");
+        d3.select(this).attr("stroke", "#333").attr("stroke-width", 0.5);
+    });
+
+    if (currentSelectedState) {
+        showHospitals(currentSelectedState);
+    }
+}
+
+// Call updateYearLabelAndMap once to initialize
+updateYearLabelAndMap();

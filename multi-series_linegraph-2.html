@@ -17,7 +17,6 @@
             width: 100%;
             height: 800px;
             overflow: hidden;
-
         }
 
         .axis-label {
@@ -31,7 +30,6 @@
         #chart-container {
             display: flex;
             overflow: hidden;
-
         }
 
         #legend-container {
@@ -39,7 +37,6 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
-
         }
     </style>
 
@@ -67,66 +64,31 @@
         </div>
     </div>
 
-    <!-- JavaScript for multi-series line visualization -->
     <script>
-        /*NOTES TO TELL GROUP: Should I make a tooltip where when you hover over measure lines the measure name and score would show? Also transitions?*/
+        const file = "healthcare_data.csv";
 
-        const files = ["healthcare_data.csv"]
+        // Header standardization map
+        const headerMap = {
+            "facility_id": "Provider ID",
+            "hospital_id": "Hospital Name",
+            "address": "Address",
+            "city": "City",
+            "state": "State",
+            "zip_code": "ZIP Code",
+            "county_name": "County Name",
+            "measure_name": "Measure Name",
+            "compared_to_national": "Compared to National",
+            "score": "Score",
+            "start_date": "Measure Start Date",
+            "end_date": "Measure End Date",
+            "original_Address": "Compiled Address"
+        };
 
-        // Function to standardize headers
-        function standardizeHeaders(data) {
-            const headerMap = {
-                "facility_id": "Provider ID",
-                "hospital_id": "Hospital Name",
-                "address": "Address",
-                "city": "City",
-                "state": "State",
-                "zip_code": "ZIP Code",
-                "county_name": "County Name",
-                "measure_name": "Measure Name",
-                "compared_to_national": "Compared to National",
-                "score": "Score",
-                "start_date": "Measure Start Date",
-                "end_date": "Measure End Date",
-                "original_Address": "Compiled Address"
+        // Master headers for alignment
+        const masterHeaders = ["Provider ID", "Hospital Name", "Address", "City", "State", "ZIP Code", "County Name", "Measure Name", "Compared to National", "Score", "Measure Start Date", "Measure End Date"];
 
-            };
-
-            return data.map(row => {
-                const standardizedRow = {};
-                Object.keys(row).forEach(key => {
-                    const standardizedKey = headerMap[key.trim()] || key.trim(); // Use mapped name or keep original
-                    standardizedRow[standardizedKey] = row[key];
-                });
-                return standardizedRow;
-            });
-        }
-
-        // Function to align columns
-        function alignColumns(data) {
-            const masterHeaders = ["Provider ID", "Hospital Name", "Address", "City", "State", "ZIP Code", "County Name", "Measure Name", "Compared to National", "Score", "Measure Start Date", "Measure End Date"];
-
-            return data.map(row => {
-                const alignedRow = {};
-                masterHeaders.forEach(header => {
-                    alignedRow[header] = row[header] || null; // Fill missing values with null
-                });
-                return alignedRow;
-            });
-        }
-
-        // Filter for required columns
-        function filterColumns(data) {
-            const requiredColumns = ["Hospital Name", "Address", "City", "State", "ZIP Code", "County Name", "Measure Name", "Score", "Measure Start Date"];
-
-            return data.map(row => {
-                const filteredRow = {};
-                requiredColumns.forEach(column => {
-                    filteredRow[column] = row[column] || null; // Include only required columns
-                });
-                return filteredRow;
-            });
-        }
+        // Required columns
+        const requiredColumns = ["Hospital Name", "Address", "City", "State", "ZIP Code", "County Name", "Measure Name", "Score", "Measure Start Date"];
 
         // Measure mapping object
         const measureNameMapping = {
@@ -136,98 +98,117 @@
             "SSI: Abdominal Observed Cases": "SSI - Abdominal Hysterectomy: Observed Cases",
             "MRSA Observed Cases": "MRSA Bacteremia: Observed Cases",
             "C.diff Observed Cases": "Clostridium Difficile (C.Diff): Observed Cases"
-
         };
 
-        // Process all files
-        Promise.all(files.map(file => d3.csv(file)))
-            .then(allData => {
-                let filteredData = []; // Define filteredData outside
-                console.log("Starting to aggregate all data");
+        // Groups for filtering in dropdown
+        const measureGroups = {
+            "Central line-associated bloodstream infections (CLABSI)": "CLABSI: Observed Cases",
+            "Catheter-associated urinary tract infections (CAUTI)": "CAUTI: Observed Cases",
+            "Surgical Site Infection from colon surgery (SSI: Colon)": "SSI - Colon Surgery: Observed Cases",
+            "Surgical Site Infection from abdominal hysterectomy (SSI: Hysterectomy)": "SSI - Abdominal Hysterectomy: Observed Cases",
+            "Methicillin-resistant Staphylococcus Aureus (MRSA) Blood Laboratory-identified Events (Bloodstream infections)": "MRSA Bacteremia: Observed Cases",
+            "Clostridium difficile (C.diff.) Laboratory-identified Events (Intestinal infections)": "Clostridium Difficile (C.Diff): Observed Cases"
+        };
 
-                allData.forEach((data, i) => {
-                    // Standardize headers and align columns for the current file
-                    const standardizedData = alignColumns(standardizeHeaders(data));
-                    console.log(`File ${i + 1} finished standardizing`);
+        // Global variables for caching
+        let filteredData = [];
+        let hospitals = [];
+        let globalDateExtent;
+        let colorScale;
+        let clickedLine = null;
 
-                    const parseDate = d3.timeParse("%m/%d/%Y");
-                    const fileFilteredData = standardizedData.filter(d => !isNaN(d.Score) && d.Score !== null);
-
-                    // Parse the data
-                    fileFilteredData.forEach(d => {
-                        d["Measure Start Date"] = parseDate(d["Measure Start Date"]);
-                        d["Score"] = +d["Score"];
-
-                        // Standardize measure names
-                        if (measureNameMapping[d["Measure Name"]]) {
-                            d["Measure Name"] = measureNameMapping[d["Measure Name"]];
-                        }
-                    });
-
-                    // Check for unmapped measures
-                    const unmappedMeasures = fileFilteredData
-                        .map(d => d["Measure Name"])
-                        .filter(measure => !Object.values(measureNameMapping).includes(measure));
-
-                    if (unmappedMeasures.length > 0) {
-                        console.warn(`Unmapped measures in file ${i + 1}:`, Array.from(new Set(unmappedMeasures)));
-                    }
-
-                    // Aggregate the filtered data into the main array
-                    filteredData = filteredData.concat(fileFilteredData);
-                    console.log(`File ${i + 1} finished processing`);
-                });
-
-                // At this point, filteredData contains data from all files
-                const hospitals = Array.from(new Set(filteredData.map(d => d["Hospital Name"])));
-                const hospitalSelect = d3.select("#hospital-select");
-
-
-                // Populate dropdown with hospital names
-                hospitalSelect.selectAll("option")
-                    .data(hospitals)
-                    .enter()
-                    .append("option")
-                    .text(d => d)
-                    .attr("value", d => d);
-
-                let lastClickedHospital; // Track the last clicked hospital
-
-                // Automatically select and display the first hospital's data
-                const defaultHospital = hospitals[0];
-                hospitalSelect.property("value", defaultHospital);
-                displayMeasures(filteredData, defaultHospital); // Display hospital-specific and national data
-                lastClickedHospital = defaultHospital; // Store the default hospital as the "last clicked"
-
-                // Event listener for dropdown change
-                hospitalSelect.on("change", function () {
-                    const selectedHospital = this.value;
-                    displayMeasures(filteredData, selectedHospital); // Update graphs
-                    lastClickedHospital = selectedHospital; // Update last clicked hospital
-                });
-
-                // Add reset button functionality
-                d3.select(".reset-button").on("click", () => {
-                    // Reset to the last clicked hospital and update the graph and legend
-                    displayMeasures(filteredData, lastClickedHospital);
-                    hospitalSelect.property("value", lastClickedHospital); // Ensure dropdown reflects the last clicked hospital
-                });
-                // After populating dropdown, process query parameter
-                const params = new URLSearchParams(window.location.search);
-                const hospitalName = params.get('hospital');
-                if (hospitalName) {
-                    console.log("Hospital parameter received after dropdown population:", hospitalName); // Debugging
-                    hospitalSelect.property("value", decodeURIComponent(hospitalName));
-                    hospitalSelect.dispatchEvent(new Event('change'));
+        // Load and process data
+        d3.csv(file).then(data => {
+            // Standardize headers
+            data = data.map(row => {
+                const standardizedRow = {};
+                for (const key in row) {
+                    const standardizedKey = headerMap[key.trim()] || key.trim();
+                    standardizedRow[standardizedKey] = row[key];
                 }
-
-                console.log("Rendering complete");
-            })
-            .catch(error => {
-                console.error("Error processing files:", error);
+                return standardizedRow;
             });
 
-        function displayMeasures(data, hospitalName) {
+            // Align columns
+            data = data.map(row => {
+                const alignedRow = {};
+                masterHeaders.forEach(header => {
+                    alignedRow[header] = row[header] || null;
+                });
+                return alignedRow;
+            });
+
+            // Filter rows with valid scores
+            const parseDate = d3.timeParse("%m/%d/%Y");
+            filteredData = data.filter(d => d.Score !== null && !isNaN(d.Score)).map(d => {
+                d["Measure Start Date"] = parseDate(d["Measure Start Date"]);
+                d["Score"] = +d["Score"];
+                // Standardize measure names
+                if (measureNameMapping[d["Measure Name"]]) {
+                    d["Measure Name"] = measureNameMapping[d["Measure Name"]];
+                }
+                return d;
+            });
+
+            // Extract unique hospitals
+            hospitals = Array.from(new Set(filteredData.map(d => d["Hospital Name"])));
+
+            // Precompute global date extent
+            globalDateExtent = d3.extent(filteredData, d => d["Measure Start Date"]);
+
+            // Define a large color palette
+            const colorPalette = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22",
+                "#17becf","#9edae5","#f7b6d2","#c5b0d5","#c49c94","#e7ba52","#9c9ede","#8c6d31","#beaed4","#fdbe6c",
+                "#7f6a93","#8c564b","#c7c7c7","#e377c2","#f7b6d2","#d62728","#edc947","#6baed6","#63707d","#ff5b5b",
+                "#9ac7ed","#90d4d2","#ffb533","#ff6f61","#ff57a6","#6b8e23"];
+
+            // Initialize color scale domain with all possible measure names
+            const allMeasures = Array.from(new Set(filteredData.map(d => d["Measure Name"])));
+            colorScale = d3.scaleOrdinal()
+                .domain(allMeasures)
+                .range(colorPalette);
+
+            // Populate the hospital dropdown
+            const hospitalSelect = d3.select("#hospital-select");
+            hospitalSelect.selectAll("option")
+                .data(hospitals)
+                .enter()
+                .append("option")
+                .text(d => d)
+                .attr("value", d => d);
+
+            // Automatically select and display the first hospital's data
+            const defaultHospital = hospitals[0];
+            hospitalSelect.property("value", defaultHospital);
+            displayMeasures(defaultHospital);
+
+            let lastClickedHospital = defaultHospital;
+
+            // Event listener for dropdown change
+            hospitalSelect.on("change", function () {
+                const selectedHospital = this.value;
+                displayMeasures(selectedHospital);
+                lastClickedHospital = selectedHospital;
+            });
+
+            // Reset button functionality
+            d3.select(".reset-button").on("click", () => {
+                displayMeasures(lastClickedHospital);
+                hospitalSelect.property("value", lastClickedHospital);
+            });
+
+            // Handle query parameter for hospital
+            const params = new URLSearchParams(window.location.search);
+            const hospitalName = params.get('hospital');
+            if (hospitalName) {
+                hospitalSelect.property("value", decodeURIComponent(hospitalName));
+                hospitalSelect.dispatch("change");
+            }
+        }).catch(error => {
+            console.error("Error processing file:", error);
+        });
+
+        function displayMeasures(hospitalName) {
             // Clear previous charts
             const hospitalChartId = "#chart-hospital";
             const nationalChartId = "#chart-national";
@@ -238,7 +219,6 @@
             const height = 500;
             const margin = { top: 20, right: 0, bottom: 40, left: 95 };
 
-            // Create SVG containers for both the hospital and national charts
             const svgHospital = d3.select(hospitalChartId).append("svg")
                 .attr("width", width)
                 .attr("height", height);
@@ -247,52 +227,38 @@
                 .attr("width", width)
                 .attr("height", height);
 
-            // Group the data by Measure Name for the specific hospital and national data
-            const hospitalMeasures = d3.group(
-                data.filter(d => d["Hospital Name"] === hospitalName),
-                d => d["Measure Name"]
-            );
+            // Filter data for the selected hospital
+            const hospitalData = filteredData.filter(d => d["Hospital Name"] === hospitalName);
+
+            // Group hospital data by measure
+            const hospitalMeasures = d3.group(hospitalData, d => d["Measure Name"]);
+
+            // Compute national measures by summing over all hospitals by date and measure
             const nationalMeasures = d3.rollup(
-                data,
+                filteredData,
                 v => d3.sum(v, d => d["Score"]),
                 d => d["Measure Name"],
                 d => d["Measure Start Date"]
             );
 
-            colorPalette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22",
-                "#17becf", "#9edae5", "#f7b6d2", "#c5b0d5", "#c49c94", "#e7ba52", "#9c9ede", "#8c6d31", "#beaed4", "#fdbe6c",
-                "#7f6a93", "#8c564b", "#c7c7c7", "#e377c2", "#f7b6d2", "#d62728", "#edc947", "#6baed6", "#63707d", "#ff5b5b",
-                "#9ac7ed", "#90d4d2", "#ffb533", "#ff6f61", "#ff57a6", "#6b8e23"];
-
-            // Define a color scale to differentiate each measure line visually
-            const colorScale = d3.scaleOrdinal()
-                .domain([...hospitalMeasures.keys(), ...nationalMeasures.keys()])
-                .range(colorPalette);
-
-            // Define the x and y scales
+            // Define scales
             const x = d3.scaleTime()
-                .domain(d3.extent(data, d => d["Measure Start Date"]))
+                .domain(globalDateExtent)
                 .range([margin.left, width - margin.right]);
 
-            const maxHospitalScore = d3.max(Array.from(hospitalMeasures.values()).flat(), d => d.Score);
+            const maxHospitalScore = d3.max(Array.from(hospitalMeasures.values()).flat(), d => d.Score) || 0;
             const yHospital = d3.scaleLinear()
                 .domain([0, maxHospitalScore])
                 .nice()
                 .range([height - margin.bottom, margin.top]);
 
-            const maxNationalScore = d3.max(
-                Array.from(nationalMeasures.values()).flatMap(measureMap =>
-                    Array.from(measureMap.values())));
+            const maxNationalScore = d3.max(Array.from(nationalMeasures.values()).flatMap(m => Array.from(m.values()))) || 0;
             const yNational = d3.scaleLinear()
                 .domain([0, maxNationalScore])
                 .nice()
                 .range([height - margin.bottom, margin.top]);
 
-            console.log("X Domain:", x.domain());
-            console.log("Y Domain (Hospital):", yHospital.domain());
-            console.log("Y Domain (National):", yNational.domain());
-
-            // Add x and y axes to both charts
+            // Add axes
             svgHospital.append("g")
                 .attr("transform", `translate(0, ${height - margin.bottom})`)
                 .call(d3.axisBottom(x).tickFormat(d3.timeFormat("%b %Y")));
@@ -309,7 +275,7 @@
                 .attr("transform", `translate(${margin.left}, 0)`)
                 .call(d3.axisLeft(yNational));
 
-            // Add axis labels
+            // Axis labels
             svgHospital.append("text")
                 .attr("x", width / 2)
                 .attr("y", height - 5)
@@ -336,41 +302,22 @@
                 .attr("transform", "rotate(-90)")
                 .text("Score");
 
-            let clickedLine = null; // Track clicked measure globally
-
-            // Function to highlight lines and legend items on hover
-            function highlightLine(path, measureName, highlight) {
-                const isClicked = clickedLine === measureName;
-
-                // Get all other paths that aren't the current hovered or clicked one
-                const otherPathsHospital = d3.selectAll("#chart-hospital path.line").filter(function () {
-                    return d3.select(this).attr("data-measure") !== measureName;
-                });
-
-                const otherPathsNational = d3.selectAll("#chart-national path.line").filter(function () {
-                    return d3.select(this).attr("data-measure") !== measureName;
-                });
-
-                // Reset legend background color for all items
-                d3.selectAll(".legend-item").style("background-color", "transparent");
-
+            // Highlight and click functions
+            function highlightLine(_, measureName, highlight) {
                 if (highlight) {
-                    // Highlight hovered line
                     d3.selectAll(`#chart-hospital path[data-measure="${measureName}"], #chart-national path[data-measure="${measureName}"]`)
                         .attr("stroke-width", 4)
                         .attr("opacity", 1);
 
-                    // Highlight corresponding legend item
                     d3.selectAll(`.legend-item[data-measure="${measureName}"]`)
                         .style("background-color", "#b3b3b37d");
 
-                    // Dim all other lines
-                    otherPathsHospital.attr("opacity", 0.3).attr("stroke-width", 1.5);
-                    otherPathsNational.attr("opacity", 0.3).attr("stroke-width", 1.5);
+                    d3.selectAll("#chart-hospital path.line, #chart-national path.line")
+                        .filter(function () { return d3.select(this).attr("data-measure") !== measureName; })
+                        .attr("opacity", 0.3)
+                        .attr("stroke-width", 1.5);
                 } else {
-                    // When hover ends
                     if (clickedLine) {
-                        // Keep clicked measure highlighted
                         d3.selectAll(`#chart-hospital path[data-measure="${clickedLine}"], #chart-national path[data-measure="${clickedLine}"]`)
                             .attr("stroke-width", 4)
                             .attr("opacity", 1);
@@ -378,15 +325,11 @@
                         d3.selectAll(`.legend-item[data-measure="${clickedLine}"]`)
                             .style("background-color", "#b3b3b37d");
 
-                        // Dim all other measures
                         d3.selectAll("#chart-hospital path.line, #chart-national path.line")
-                            .filter(function () {
-                                return d3.select(this).attr("data-measure") !== clickedLine;
-                            })
+                            .filter(function () { return d3.select(this).attr("data-measure") !== clickedLine; })
                             .attr("opacity", 0.3)
                             .attr("stroke-width", 1.5);
                     } else {
-                        // No clicked measure, reset all lines to default state
                         d3.selectAll("#chart-hospital path.line, #chart-national path.line")
                             .attr("stroke-width", 1.5)
                             .attr("opacity", 1);
@@ -394,190 +337,119 @@
                 }
             }
 
-            // Function to toggle the clicked state
-            function toggleClickedLine(path, measureName) {
-                // Reset the background color for all legend items
+            function toggleClickedLine(_, measureName) {
                 d3.selectAll(".legend-item").style("background-color", "transparent");
-
                 if (clickedLine === measureName) {
                     clickedLine = null;
-
-                    // Reset clicked line to default
                     d3.selectAll(`#chart-hospital path[data-measure="${measureName}"], #chart-national path[data-measure="${measureName}"]`)
                         .attr("stroke-width", 1.5)
                         .attr("opacity", 1);
-
-                    // Reset all lines to default
                     d3.selectAll("#chart-hospital path.line, #chart-national path.line")
                         .attr("opacity", 1)
                         .attr("stroke-width", 1.5);
                 } else {
-                    // Unclick the previously clicked line
                     if (clickedLine) {
                         d3.selectAll(`#chart-hospital path[data-measure="${clickedLine}"], #chart-national path[data-measure="${clickedLine}"]`)
                             .attr("stroke-width", 1.5)
                             .attr("opacity", 0.3);
-
                         d3.selectAll(`.legend-item[data-measure="${clickedLine}"]`)
                             .style("background-color", "transparent");
                     }
-
-                    // Set new clicked line
                     clickedLine = measureName;
-
-                    // Highlight the clicked line
                     d3.selectAll(`#chart-hospital path[data-measure="${measureName}"], #chart-national path[data-measure="${measureName}"]`)
                         .attr("stroke-width", 4)
                         .attr("opacity", 1);
-
-                    // Highlight the clicked legend item
                     d3.selectAll(`.legend-item[data-measure="${measureName}"]`)
                         .style("background-color", "#b3b3b37d");
-
-                    // Lower opacity of all other lines
                     d3.selectAll("#chart-hospital path.line, #chart-national path.line")
-                        .filter(function () {
-                            return d3.select(this).attr("data-measure") !== measureName;
-                        })
+                        .filter(function () { return d3.select(this).attr("data-measure") !== measureName; })
                         .attr("opacity", 0.3)
                         .attr("stroke-width", 1.5);
                 }
             }
 
-            // Draw the lines for the hospital data
+            // Draw hospital lines
             hospitalMeasures.forEach((measureData, measureName) => {
-                const sortedData = measureData.sort((a, b) => a["Measure Start Date"] - b["Measure Start Date"]);
-
+                const sortedData = measureData.slice().sort((a, b) => a["Measure Start Date"] - b["Measure Start Date"]);
                 const line = d3.line()
                     .x(d => x(d["Measure Start Date"]))
                     .y(d => yHospital(d.Score));
 
-                const pathHospital = svgHospital.append("path")
+                svgHospital.append("path")
                     .datum(sortedData)
                     .attr("class", "line")
                     .attr("fill", "none")
                     .attr("stroke", colorScale(measureName))
                     .attr("stroke-width", 1.5)
                     .attr("d", line)
-                    .attr("data-measure", measureName) // Store the measure name as a data attribute
-                    .on("mouseover", function (event, d) {
+                    .attr("data-measure", measureName)
+                    .on("mouseover", function (event) {
                         const measureName = d3.select(this).attr("data-measure");
                         highlightLine(this, measureName, true);
                     })
-                    .on("mouseout", function (event, d) {
+                    .on("mouseout", function () {
                         const measureName = d3.select(this).attr("data-measure");
                         highlightLine(this, measureName, false);
                     })
-                    .on("click", function (event, d) {
+                    .on("click", function () {
                         const measureName = d3.select(this).attr("data-measure");
                         toggleClickedLine(this, measureName);
                     });
             });
 
-            // Draw the lines for the national data
+            // Draw national lines
             nationalMeasures.forEach((dateMap, measureName) => {
                 const nationalmeasureData = Array.from(dateMap, ([date, score]) => ({ "Measure Start Date": date, "Score": score }));
-                const sortedData = nationalmeasureData.sort((a, b) => a["Measure Start Date"] - b["Measure Start Date"]);
-
+                const sortedData = nationalmeasureData.slice().sort((a, b) => a["Measure Start Date"] - b["Measure Start Date"]);
                 const line = d3.line()
                     .x(d => x(d["Measure Start Date"]))
                     .y(d => yNational(d.Score));
 
-                const pathNational = svgNational.append("path")
+                svgNational.append("path")
                     .datum(sortedData)
                     .attr("class", "line")
                     .attr("fill", "none")
                     .attr("stroke", colorScale(measureName))
                     .attr("stroke-width", 1.5)
                     .attr("d", line)
-                    .attr("data-measure", measureName) // Store the measure name as a data attribute
-                    .on("mouseover", function (event, d) {
+                    .attr("data-measure", measureName)
+                    .on("mouseover", function () {
                         const measureName = d3.select(this).attr("data-measure");
                         highlightLine(this, measureName, true);
                     })
-                    .on("mouseout", function (event, d) {
+                    .on("mouseout", function () {
                         const measureName = d3.select(this).attr("data-measure");
                         highlightLine(this, measureName, false);
                     })
-                    .on("click", function (event, d) {
+                    .on("click", function () {
                         const measureName = d3.select(this).attr("data-measure");
                         toggleClickedLine(this, measureName);
                     });
             });
 
-            const measureGroups = {
-                "Central line-associated bloodstream infections (CLABSI)":"CLABSI: Observed Cases",
-                "Catheter-associated urinary tract infections (CAUTI)": "CAUTI: Observed Cases",
-                "Surgical Site Infection from colon surgery (SSI: Colon)": "SSI - Colon Surgery: Observed Cases",
-                "Surgical Site Infection from abdominal hysterectomy (SSI: Hysterectomy)": "SSI - Abdominal Hysterectomy: Observed Cases",
-                "Methicillin-resistant Staphylococcus Aureus (MRSA) Blood Laboratory-identified Events (Bloodstream infections)": "MRSA Bacteremia: Observed Cases",
-                "Clostridium difficile (C.diff.) Laboratory-identified Events (Intestinal infections)": "Clostridium Difficile (C.Diff): Observed Cases"
-            };
-
-            // Map measures using the measureNameMapping to ensure only updated names appear
-            const mappedMeasures = new Map();
-            hospitalMeasures.forEach((value, key) => {
-                const standardizedName = measureNameMapping[key] || key; // Use mapped name or default to original
-                if (!mappedMeasures.has(standardizedName)) {
-                    mappedMeasures.set(standardizedName, value);
-                }
-            });
-
-
-            // Function to filter the graph based on the selected group
+            // Filtering by measure groups
             function filterMeasuresByGroup(selectedGroup) {
                 let measuresToShow = [];
-
-                // Determine which measures to display based on selected group
                 if (selectedGroup === "all") {
-                    measuresToShow = Object.values(measureGroups).flat();
+                    measuresToShow = Object.values(measureGroups);
                 } else {
-                    measuresToShow = measureGroups[selectedGroup];
+                    measuresToShow = [measureGroups[selectedGroup]];
                 }
 
-                // Clear the dropdown before adding new options
-                const measureSelect = document.getElementById("measure-select");
-                measureSelect.innerHTML = "";
-
-                // Add the group options to the dropdown again (or 'Show All' if needed)
-                const defaultOption = document.createElement("option");
-                defaultOption.value = "all";
-                defaultOption.textContent = "Show All";
-                measureSelect.appendChild(defaultOption);
-
-                // Add the group options to the dropdown
-                Object.keys(measureGroups).forEach(groupName => {
-                    const option = document.createElement("option");
-                    option.value = groupName;
-                    option.textContent = groupName;
-                    measureSelect.appendChild(option);
-                });
-
-                // Filter the graph based on selected group
                 d3.selectAll("#chart-hospital path.line, #chart-national path.line")
-                    .each(function () {
+                    .style("display", function () {
                         const measureName = d3.select(this).attr("data-measure");
-                        if (measuresToShow.includes(measureName) || selectedGroup === "all") {
-                            d3.select(this).style("display", "inline");
-                        } else {
-                            d3.select(this).style("display", "none");
-                        }
+                        return (selectedGroup === "all" || measuresToShow.includes(measureName)) ? "inline" : "none";
                     });
 
-                // Call renderLegend after filtering the graph
                 renderLegend(measuresToShow);
             }
 
-            // Function to render the legend based on the selected measures
-            function renderLegend(measuresToShow, legendInitialized) {
-                // Initialize the legend only once
-                if (legendInitialized) return;
-
+            function renderLegend(measuresToShow) {
                 const legend = document.querySelector(".legend");
-                legend.innerHTML = ""; // Clear existing legend
+                legend.innerHTML = "";
 
-                // Use a Set to ensure unique items in the legend
-                const uniqueMeasures = new Set(measuresToShow);
+                const uniqueMeasures = new Set(measuresToShow.flat());
 
                 uniqueMeasures.forEach(measureName => {
                     const legendItem = d3.select(".legend").append("div")
@@ -586,25 +458,24 @@
                         .style("align-items", "center")
                         .style("margin", "5px 0")
                         .style("cursor", "pointer")
-                        .attr("data-measure", measureName) // Store the measure name as a data attribute
+                        .attr("data-measure", measureName)
                         .on("mouseover", function () {
                             const measureName = d3.select(this).attr("data-measure");
-                            highlightLine(this, measureName, true); // Highlight on hover
-                            d3.select(this).style("background-color", "#b3b3b37d"); // Slight hover effect
+                            highlightLine(this, measureName, true);
+                            d3.select(this).style("background-color", "#b3b3b37d");
                         })
                         .on("mouseout", function () {
                             const measureName = d3.select(this).attr("data-measure");
-                            highlightLine(this, measureName, false); // Remove highlight on hover out
-                            d3.select(this).style("background-color", "transparent"); // Restore opacity
+                            highlightLine(this, measureName, false);
+                            d3.select(this).style("background-color", "transparent");
                         })
                         .on("click", function () {
                             const measureName = d3.select(this).attr("data-measure");
-                            toggleClickedLine(this, measureName); // Toggle clicked state
+                            toggleClickedLine(this, measureName);
                             d3.selectAll(".legend-item").style("border", "1px solid transparent");
-                            d3.select(this).style("background-color", "#b3b3b37d"); // Indicate selected
+                            d3.select(this).style("background-color", "#b3b3b37d");
                         });
 
-                    // Add a color box to represent the measure's color
                     legendItem.append("div")
                         .style("width", "15px")
                         .style("height", "15px")
@@ -612,58 +483,51 @@
                         .style("background-color", colorScale(measureName))
                         .style("border", "1px solid #ccc");
 
-                    // Add the measure name next to the color box
                     legendItem.append("span")
                         .style("margin-left", "10px")
                         .style("font-size", "12px")
                         .style("color", "#333")
                         .text(measureName);
                 });
-
-                // Mark the legend as initialized
-                legendInitialized = true;
             }
 
             const measureSelect = document.getElementById("measure-select");
+            measureSelect.innerHTML = "";
+            const defaultOption = document.createElement("option");
+            defaultOption.value = "all";
+            defaultOption.textContent = "Show All";
+            measureSelect.appendChild(defaultOption);
 
-            // Listen for changes in the dropdown
+            Object.keys(measureGroups).forEach(groupName => {
+                const option = document.createElement("option");
+                option.value = groupName;
+                option.textContent = groupName;
+                measureSelect.appendChild(option);
+            });
+
             measureSelect.addEventListener("change", function () {
                 const selectedGroup = measureSelect.value;
                 filterMeasuresByGroup(selectedGroup);
             });
 
-            // Initial population of the graph and legend (show all measures by default)
+            // Show all by default
             filterMeasuresByGroup("all");
-
-            console.log("displayMeasures() finished");
         }
-    </script>
 
-    <script>
         document.addEventListener("DOMContentLoaded", () => {
-            // Get the hospital query parameter
             const params = new URLSearchParams(window.location.search);
             const hospitalName = params.get('hospital');
-
             if (hospitalName) {
-                console.log("Hospital parameter received:", hospitalName); // Debugging
-                // Select the hospital in the dropdown and update the chart
                 const hospitalSelect = document.getElementById("hospital-select");
                 hospitalSelect.value = decodeURIComponent(hospitalName);
-
-                // Trigger chart update based on the selected hospital
                 hospitalSelect.dispatchEvent(new Event('change'));
             }
         });
-    </script>
 
-    <script>
         document.getElementById("return-to-map").addEventListener("click", () => {
-            window.location.href = "index.html";
-        });
+            window.top.location.href = "index.html";
+                });
     </script>
-
-
 </body>
 
 </html>
